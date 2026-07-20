@@ -1,0 +1,20 @@
+# Python / uv
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Node / Vue
+node_modules/
+frontend/dist/
+
+# 빌드 산출물(프론트 → 백엔드 정적)
+backend/app/static/*
+!backend/app/static/.gitkeep
+
+# 런타임/로컬
+*.sqlite3
+state_snapshot.json
+
+# Claude / 브레인스토밍 아티팩트
+.superpowers/
