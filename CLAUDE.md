@@ -21,7 +21,7 @@ cd backend && uv sync
 - 백엔드: Python 3.11+ (**uv 관리**) / FastAPI / SQLite(sqlite3, ORM 없음) / pytest
 - 재생: mpv 2인스턴스(화면·음악) JSON IPC 소켓
 - 프론트: Vue 3 + Vite (→ `backend/app/static` 로 빌드)
-- 배포 타깃: RPi5 / Raspberry Pi OS Bookworm 64-bit / systemd
+- 배포 타깃: RPi5 / Raspberry Pi OS Lite (Bookworm, 64-bit) / systemd
 
 ## 디렉토리
 - `backend/` — **uv 프로젝트 루트**(`pyproject.toml`, `uv.lock`, `.python-version`).
@@ -47,8 +47,9 @@ cd backend && uv sync
 - 커밋 전 `cd backend && uv run pytest -q` 통과 확인. 프론트 변경 시 `npm run build` 통과 확인.
 
 ## RPi5 배포/검증
-- SSH: `ssh pi@pidio.local`
+- SSH: `ssh admin@pidio.local`
 - 코드 배포: Pi에서 `git pull` → `cd backend && uv sync` → `sudo systemctl restart pidio-web`
+- OS: **Raspberry Pi OS Lite (64-bit)**, 계정 `admin`, 시간대 **Asia/Seoul**(예약 재생 필수), 재생 사용자 `video`·`render` 그룹.
 - mpv 출력 옵션(0.1에서 확정한 값): `--vo=gpu --gpu-context=drm`
 - 실제 재생/USB/4K 확인은 반드시 Pi에서. Windows에선 mpv/USB를 목으로만 테스트.
 
