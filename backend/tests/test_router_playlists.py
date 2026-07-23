@@ -49,6 +49,15 @@ def test_blocks_roundtrip():
     assert got["blocks"][1]["photos"][0]["duration_sec"] == 7
 
 
+def test_put_nonexistent_media_returns_400():
+    c, _ = _client()
+    pid = c.post("/api/playlists", json={"name": "X"}).json()["id"]
+    r = c.put(f"/api/playlists/{pid}",
+              json={"name": "X", "repeat_mode": "off", "shuffle": False,
+                    "blocks": [{"kind": "video", "video_id": "does-not-exist"}]})
+    assert r.status_code == 400  # 500 아님(FK 위반을 명확한 4xx 로)
+
+
 def test_play_playlist_sets_player():
     c, app = _client()
     pid = c.post("/api/playlists", json={"name": "P"}).json()["id"]

@@ -2,6 +2,8 @@
 """E-2 플레이리스트 라우터 (Task 8.2) — playlist_repo + AppService 위임."""
 from __future__ import annotations
 
+import sqlite3
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
@@ -47,9 +49,17 @@ class UpdateBody(BaseModel):
 
 @router.put("/{playlist_id}")
 def update_playlist(playlist_id: int, body: UpdateBody, request: Request) -> dict:
-    playlist_repo.update_playlist(
-        _db(request), playlist_id, body.name, body.repeat_mode, body.shuffle, body.blocks
-    )
+    db = _db(request)
+    try:
+        playlist_repo.update_playlist(
+            db, playlist_id, body.name, body.repeat_mode, body.shuffle, body.blocks
+        )
+    except sqlite3.IntegrityError:
+        # 블록이 존재하지 않는(또는 사용 불가) 미디어를 참조 → FK 위반.
+        db.rollback()
+        raise HTTPException(
+            status_code=400, detail="존재하지 않는 미디어를 참조하는 블록이 있습니다."
+        )
     return {"ok": True}
 
 
