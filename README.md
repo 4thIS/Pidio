@@ -10,19 +10,6 @@
 
 ---
 
-## 문서
-
-| 문서 | 내용 |
-|---|---|
-| [`docs/01_설계.MD`](docs/01_설계.MD) | 설계 명세 (하드웨어·DB 스키마·재생 모델·예약·UI) |
-| [`docs/02_구현.md`](docs/02_구현.md) | 구현 계획 (Phase 0~10, 태스크별 체크리스트) |
-| [`docs/03_api_contract.md`](docs/03_api_contract.md) | HTTP API 계약 v1 |
-| [`docs/04_DJ_할일.md`](docs/04_DJ_할일.md) | DJ 진행 상황·작업 로그 |
-| [`docs/05_DJ_쉬운설명.md`](docs/05_DJ_쉬운설명.md) | 구현 내용 쉬운 설명 (비유 + 코드) |
-| [`CLAUDE.md`](CLAUDE.md) | 개발 규칙 (uv·TDD·소유 범위) |
-
----
-
 ## 기술 스택
 
 - **백엔드**: Python 3.11+ (**uv** 관리) · FastAPI · SQLite(`sqlite3`, ORM 없음) · pytest
