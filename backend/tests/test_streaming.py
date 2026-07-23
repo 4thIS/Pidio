@@ -1,7 +1,7 @@
 # backend/tests/test_streaming.py
 """Task 7.3 Range 스트리밍 & 썸네일 서빙 테스트.
 
-content_id → 경로는 media_store(rel_path) + media_root 로 해석.
+content_id → 경로는 media_repo(rel_path) + media_root 로 해석.
 """
 from fastapi.testclient import TestClient
 
