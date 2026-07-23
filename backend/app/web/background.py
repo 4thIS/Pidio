@@ -15,6 +15,17 @@ from app.domain import scanner
 _TICK_SECONDS = 60
 
 
+def startup_scan(deps) -> int:
+    """부팅 시 media_root 가 마운트돼 있으면 1회 스캔. 발견한 미디어 수 반환.
+
+    (백그라운드 루프는 마운트 '전환' 시에만 스캔하므로, 이미 마운트된 채 부팅한
+    경우를 여기서 처리한다 — 부팅 자동재생/목록 표시에 필요.)
+    """
+    if not os.path.isdir(deps.media_root):
+        return 0
+    return scanner.scan_library(deps.db, deps.media_root)["seen"]
+
+
 def tick(deps, hub, now=None) -> None:
     """한 번의 틱: 스케줄 재평가 + 상태 방송."""
     deps.service.evaluate_schedule(now)

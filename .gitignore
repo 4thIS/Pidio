@@ -14,7 +14,12 @@ backend/app/static/*
 
 # 런타임/로컬
 *.sqlite3
+*.db-journal
+backend/dev.db
 state_snapshot.json
+
+# 개발용 샘플 미디어(로컬 생성물 — scripts/make_samples.py 로 재생성)
+backend/sample_media/
 
 # Claude / 브레인스토밍 아티팩트
 .superpowers/
