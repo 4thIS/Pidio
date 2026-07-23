@@ -26,11 +26,12 @@ const picker = ref(null) // { kind:'video'|'music'|'photo', block? }
 onMounted(load)
 async function load() {
   loading.value = true
-  // 미디어(제목/피커용)
+  // 미디어(제목/피커용). 서버가 정상 응답하면 빈 목록이라도 그대로 사용
+  // (가짜 미디어를 쓰면 저장 시 존재하지 않는 id 참조로 실패하므로 catch 에서만 폴백).
   let list
   try {
-    list = await mediaApi.list('all')
-    if (!Array.isArray(list) || !list.length) list = MOCK_MEDIA
+    const data = await mediaApi.list('all')
+    list = Array.isArray(data) ? data : []
   } catch {
     list = MOCK_MEDIA
   }
@@ -118,8 +119,9 @@ async function save() {
   try {
     await plApi.save(props.id, payload)
     notify('저장했습니다.')
-  } catch {
-    notify(usingMock.value ? '저장됨(서버 미연결 · 화면만 반영).' : '저장에 실패했습니다.')
+  } catch (e) {
+    if (usingMock.value) notify('저장됨(서버 미연결 · 화면만 반영).')
+    else notify(e?.message || '저장에 실패했습니다.')  // 서버의 사유(예: 없는 미디어 참조) 노출
   } finally {
     saving.value = false
   }
