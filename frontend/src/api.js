@@ -56,6 +56,45 @@ export const auth = {
   logout: () => api('/api/logout', { method: 'POST' }),
 }
 
+// 미디어 목록/제목 (백엔드 라우터는 Phase 8/Task 8.1 에서 구현 → 그 전엔 404 → Library가 샘플로 폴백)
+export const media = {
+  list: (type = 'all') => api(`/api/media?type=${encodeURIComponent(type)}`),
+  patchTitle: (id, custom_title) =>
+    api(`/api/media/${id}`, { method: 'PATCH', body: { custom_title } }),
+}
+
+// 선택 재생 (Phase 8/Task 8.4)
+export const play = {
+  selection: (content_ids, { repeat = 'off', shuffle = false } = {}) =>
+    api('/api/play/selection', { method: 'POST', body: { content_ids, repeat, shuffle } }),
+}
+
+// 플레이리스트 CRUD/재생 (Phase 8/Task 8.2)
+export const playlists = {
+  list: () => api('/api/playlists'),
+  get: (id) => api(`/api/playlists/${id}`),
+  create: (name) => api('/api/playlists', { method: 'POST', body: { name } }),
+  save: (id, data) => api(`/api/playlists/${id}`, { method: 'PUT', body: data }),
+  remove: (id) => api(`/api/playlists/${id}`, { method: 'DELETE' }),
+  play: (id) => api(`/api/playlists/${id}/play`, { method: 'POST' }),
+}
+
+// 설정 (Phase 8/Task 8.5)
+export const settings = {
+  get: () => api('/api/settings'),
+  save: (data) => api('/api/settings', { method: 'PUT', body: data }),
+  changePassword: (old_password, new_password) =>
+    api('/api/settings/password', { method: 'POST', body: { old: old_password, new: new_password } }),
+}
+
+// 예약 (Phase 8/Task 8.3). 같은 타입 겹침 시 서버가 409.
+export const schedule = {
+  set: (playlistId, sched) =>
+    api(`/api/playlists/${playlistId}/schedule`, { method: 'PUT', body: sched }),
+  remove: (playlistId) =>
+    api(`/api/playlists/${playlistId}/schedule`, { method: 'DELETE' }),
+}
+
 // 재생 제어 호출 (백엔드 라우터는 Phase 8/Task 8.4 에서 구현 → 그 전엔 404)
 export const player = {
   /** action ∈ next|prev|pause|resume|stop|resume_auto */

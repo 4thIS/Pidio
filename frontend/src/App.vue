@@ -1,11 +1,22 @@
 <script setup>
 // 앱 셸: 시작 시 세션 확인 → 로그인 화면 또는 메인.
-// 메인 진입 시 SSE(/events) 구독. (전체 목록 등 본체는 D-3~ 에서.)
-import { onMounted, watch } from 'vue'
+// 메인 진입 시 SSE(/events) 구독. 업로드는 화면 어디서나 드롭 가능.
+import { onMounted, ref, watch } from 'vue'
 import { store, connectEvents, disconnectEvents } from './store.js'
 import { auth } from './api.js'
 import Login from './components/Login.vue'
 import NowPlaying from './components/NowPlaying.vue'
+import Playlists from './components/Playlists.vue'
+import Library from './components/Library.vue'
+import PlaylistDetail from './components/PlaylistDetail.vue'
+import Uploader from './components/Uploader.vue'
+import Settings from './components/Settings.vue'
+
+// 간단 뷰 전환: 메인 ↔ 플레이리스트 상세 ↔ 설정 (라우터 없이)
+const detailId = ref(null)
+const showSettings = ref(false)
+const uploader = ref(null)
+const libKey = ref(0) // 업로드 완료 시 목록 새로고침
 
 onMounted(async () => {
   try {
@@ -43,14 +54,23 @@ async function logout() {
     <div class="topbar">
       <div class="logo"><span class="dot"></span> Pidio</div>
       <div class="grow"></div>
+      <button class="up" @click="uploader?.pick()">⬆ 업로드</button>
+      <button class="ico" :class="{ on: showSettings }" @click="showSettings = !showSettings" aria-label="설정">⚙</button>
       <button class="out" @click="logout">로그아웃</button>
     </div>
 
     <NowPlaying />
 
-    <div class="rest">
-      <p>플레이리스트 · 전체 목록(넷플릭스 호버)은 다음 단계 <b>D-3~</b>에서 만들어요.</p>
+    <Settings v-if="showSettings" @close="showSettings = false" />
+
+    <PlaylistDetail v-else-if="detailId !== null" :id="detailId" @close="detailId = null" />
+
+    <div v-else class="rest">
+      <Playlists @open="detailId = $event" />
+      <Library :key="libKey" />
     </div>
+
+    <Uploader ref="uploader" @uploaded="libKey++" />
   </main>
 </template>
 
@@ -100,14 +120,36 @@ async function logout() {
   background: var(--elev);
   color: var(--text);
 }
+.up {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+.ico {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--bd);
+  background: var(--elev);
+  color: var(--text);
+  display: grid;
+  place-items: center;
+  font-size: 15px;
+}
+.ico.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
 .rest {
   flex: 1;
-  display: grid;
-  place-content: center;
-  text-align: center;
-  color: var(--muted);
-  font-size: 13.5px;
-  padding: 24px;
 }
-.rest b { color: var(--text); }
+.rest .soon {
+  color: var(--faint);
+  font-size: 12px;
+  text-align: center;
+  padding: 12px 16px 0;
+  margin: 0;
+}
+.rest b { color: var(--muted); }
 </style>
