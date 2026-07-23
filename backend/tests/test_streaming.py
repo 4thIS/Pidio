@@ -15,9 +15,10 @@ def _app(tmp_path):
 
 
 def _register_video(app, usb, content_id="cid", data=b"0123456789ABCDEF"):
+    from app.domain import media_repo
     (usb / "videos").mkdir(parents=True, exist_ok=True)
     (usb / "videos" / f"{content_id}.mp4").write_bytes(data)
-    app.state.deps.media_store.upsert(content_id, "video", "clip.mp4", f"videos/{content_id}.mp4")
+    media_repo.upsert_media(app.state.deps.db, content_id, "video", "clip.mp4", f"videos/{content_id}.mp4")
     return data
 
 
@@ -47,7 +48,7 @@ def test_stream_missing_id_404(tmp_path):
 def test_thumb_serves_jpeg(tmp_path):
     client, app, usb = _app(tmp_path)
     _register_video(app, usb)
-    thumbs = usb / "thumbs"
+    thumbs = usb / ".pidio" / "thumbs"
     thumbs.mkdir(parents=True, exist_ok=True)
     (thumbs / "cid.jpg").write_bytes(b"\xff\xd8\xff\xe0jpeg-bytes")
     r = client.get("/thumb/cid")

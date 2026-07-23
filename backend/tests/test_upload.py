@@ -45,8 +45,9 @@ def test_chunked_upload_creates_file_and_media_row(tmp_path):
     assert len(files) == 1
     assert files[0].read_bytes() == data
 
-    # 미디어 행 생성됨
-    row = app.state.deps.media_store.get(cid)
+    # 미디어 행 생성됨(실 DB)
+    from app.domain import media_repo
+    row = media_repo.get_media(app.state.deps.db, cid)
     assert row is not None and row["media_type"] == "video"
 
 

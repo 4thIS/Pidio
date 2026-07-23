@@ -48,7 +48,7 @@ async function save() {
     })
     notify('설정을 저장했습니다.')
   } catch {
-    notify('저장됨(샘플 · /api/settings 는 Phase 8).')
+    notify('저장됨(서버 미연결 · 화면만 반영).')
   }
 }
 
@@ -70,7 +70,7 @@ async function changePassword() {
     pwError.value =
       e instanceof ApiError && e.status === 401
         ? '현재 비밀번호가 올바르지 않습니다.'
-        : '비밀번호 변경은 백엔드 연동(Phase 8) 후 동작합니다.'
+        : '비밀번호 변경을 처리하지 못했습니다.'
   }
 }
 
@@ -92,7 +92,7 @@ function notify(m) {
       <button class="save" @click="save">💾 저장</button>
     </div>
 
-    <p v-if="usingMock" class="mock">샘플 값 · /api/settings 는 Phase 8</p>
+    <p v-if="usingMock" class="mock">샘플 값 · 서버 미연결</p>
     <div v-if="loading" class="empty">불러오는 중…</div>
 
     <div v-else class="set">
@@ -112,7 +112,7 @@ function notify(m) {
           <div class="t">대기화면 이미지</div>
           <div class="d">아무것도 재생 안 할 때 TV에 표시</div>
         </div>
-        <button class="ctl acc" @click="notify('대기화면 업로드는 백엔드 연동(Phase 8) 후 동작합니다.')">
+        <button class="ctl acc" @click="notify('대기화면 이미지 업로드는 준비 중입니다.')">
           🖼 이미지 변경
         </button>
       </div>
