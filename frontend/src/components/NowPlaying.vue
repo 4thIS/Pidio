@@ -2,7 +2,7 @@
 // D-2 지금재생 바 — /events(SSE)로 받은 PlayerState 를 실시간 표시.
 import { computed, ref } from 'vue'
 import { store } from '../store.js'
-import { player as playerApi, ApiError } from '../api.js'
+import { player as playerApi } from '../api.js'
 import { formatTime, progressPercent } from '../format.js'
 
 // player 가 null 이면 대기(standby) 기본값으로 취급.
@@ -27,12 +27,8 @@ async function run(fn) {
   notice.value = ''
   try {
     await fn()
-  } catch (e) {
-    // 재생 라우터는 Phase 8 연동 후 동작. 그 전엔 404 → 안내만.
-    notice.value =
-      e instanceof ApiError && e.status === 404
-        ? '재생 제어는 백엔드 연동(Phase 8) 후 동작합니다.'
-        : '요청을 처리하지 못했습니다.'
+  } catch {
+    notice.value = '요청을 처리하지 못했습니다.'
   }
 }
 

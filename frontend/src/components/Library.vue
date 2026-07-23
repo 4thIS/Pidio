@@ -21,11 +21,11 @@ onMounted(load)
 async function load() {
   loading.value = true
   try {
-    const data = await mediaApi.list('all') // Phase 8 라우터 생기면 실제 데이터
+    const data = await mediaApi.list('all')
     items.value = Array.isArray(data) ? data : []
     usingMock.value = false
   } catch {
-    items.value = MOCK_MEDIA // 아직 /api/media 없음 → 샘플로 UI 개발
+    items.value = MOCK_MEDIA // 서버 미연결 시 샘플로 폴백
     usingMock.value = true
   } finally {
     loading.value = false
@@ -58,16 +58,13 @@ async function playSelection() {
   try {
     await playApi.selection([...selected], {})
     notify(`${selected.size}개 재생을 요청했습니다.`)
-  } catch (e) {
-    notify(
-      e instanceof ApiError
-        ? '재생 제어는 백엔드 연동(Phase 8) 후 동작합니다.'
-        : '요청을 처리하지 못했습니다.',
-    )
+  } catch {
+    notify('재생 요청을 처리하지 못했습니다.')
   }
 }
 function todo(what) {
-  notify(`${what}은(는) 백엔드 연동(Phase 8) 후 동작합니다.`)
+  // 큐 추가·목록 저장은 아직 미구현 기능(엔드포인트 없음).
+  notify(`${what} 기능은 준비 중입니다.`)
 }
 
 const notice = ref('')
@@ -84,7 +81,7 @@ function notify(msg) {
     <div class="head">
       <h3>전체 목록</h3>
       <span class="src">USB 라이브러리</span>
-      <span v-if="usingMock" class="mock">샘플 데이터 · /api/media 는 Phase 8</span>
+      <span v-if="usingMock" class="mock">샘플 데이터 · 서버 미연결</span>
     </div>
 
     <div class="tabs">

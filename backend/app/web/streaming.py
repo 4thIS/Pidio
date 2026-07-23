@@ -5,8 +5,7 @@
 - GET /thumb/{content_id}  : jpeg 썸네일.
 없는 content_id / 파일 없음 → 404.
 
-content_id → 경로 해석은 media_store(rel_path) + media_root 로 한다(현재 가짜 어댑터,
-Phase 8 에서 CW media_repo 로 교체).
+content_id → 경로 해석은 media_repo(rel_path) + media_root 로 한다(Phase 8, 실 DB).
 """
 from __future__ import annotations
 
@@ -16,14 +15,16 @@ from typing import Iterator
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
 
+from app.domain import media_repo
+
 router = APIRouter(tags=["stream"])
 
 _CHUNK = 64 * 1024
 
 
 def _resolve(deps, content_id: str) -> Path | None:
-    row = deps.media_store.get(content_id)
-    if row is None:
+    row = media_repo.get_media(deps.db, content_id)
+    if row is None or not row.get("rel_path"):
         return None
     path = Path(deps.media_root) / row["rel_path"]
     return path if path.is_file() else None
@@ -78,9 +79,9 @@ def stream(content_id: str, request: Request):
 @router.get("/thumb/{content_id}")
 def thumb(content_id: str, request: Request):
     deps = request.app.state.deps
-    if deps.media_store.get(content_id) is None:
+    if media_repo.get_media(deps.db, content_id) is None:
         raise HTTPException(status_code=404, detail="not found")
-    thumb_path = Path(deps.media_root) / "thumbs" / f"{content_id}.jpg"
+    thumb_path = Path(deps.media_root) / ".pidio" / "thumbs" / f"{content_id}.jpg"
     if not thumb_path.is_file():
         raise HTTPException(status_code=404, detail="no thumbnail")
     return FileResponse(str(thumb_path), media_type="image/jpeg")

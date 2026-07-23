@@ -1,7 +1,7 @@
 # backend/tests/test_upload.py
 """Task 7.2 청크 업로드 테스트.
 
-가짜 어댑터(deps.media_store / deps.compute_content_id) 위에서 검증.
+실제 도메인(identity·media_repo, 도메인 DB) 위에서 검증.
 USB 루트(media_root) 존재 = 마운트됨, 부재 = 409.
 """
 from fastapi.testclient import TestClient
@@ -45,8 +45,9 @@ def test_chunked_upload_creates_file_and_media_row(tmp_path):
     assert len(files) == 1
     assert files[0].read_bytes() == data
 
-    # 미디어 행 생성됨
-    row = app.state.deps.media_store.get(cid)
+    # 미디어 행 생성됨(실 DB)
+    from app.domain import media_repo
+    row = media_repo.get_media(app.state.deps.db, cid)
     assert row is not None and row["media_type"] == "video"
 
 

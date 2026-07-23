@@ -35,7 +35,7 @@ async function play(pl) {
     await plApi.play(pl.id)
     notify(`"${pl.name}" 재생을 요청했습니다.`)
   } catch {
-    notify('재생은 백엔드 연동(Phase 8) 후 동작합니다.')
+    notify('재생 요청을 처리하지 못했습니다.')
   }
 }
 async function create() {
@@ -43,7 +43,7 @@ async function create() {
     const r = await plApi.create('새 목록')
     if (r && r.id) emit('open', r.id)
   } catch {
-    notify('새 목록 생성은 백엔드 연동(Phase 8) 후 동작합니다.')
+    notify('새 목록을 만들지 못했습니다.')
   }
 }
 
@@ -66,7 +66,7 @@ function notify(msg) {
     <div class="pls">
       <div v-for="pl in items" :key="pl.id" class="pl" @click="emit('open', pl.id)">
         <div class="cover">
-          <span v-for="(c, i) in (pl.cover || []).slice(0, 3)" :key="i" class="s" :class="'s' + i" :style="coverStyle(c)"></span>
+          <span v-for="(c, i) in (pl.cover_content_ids || pl.cover || []).slice(0, 3)" :key="i" class="s" :class="'s' + i" :style="coverStyle(c)"></span>
           <button class="play" @click.stop="play(pl)" aria-label="재생">▶</button>
         </div>
         <div class="nm">{{ pl.name }}</div>

@@ -5,7 +5,7 @@
 complete: 청크 병합 → content_id 계산 → USB 타입 폴더로 이동 → media upsert → 백그라운드 probe/thumbnail.
 대상 USB 타입 폴더가 없으면(미마운트) 409.
 
-content_id 계산·media upsert 는 현재 가짜 어댑터(deps)를 통하며 Phase 8 에서 CW 도메인으로 교체된다.
+content_id 계산은 domain.identity, media 등록은 domain.media_repo(실 DB)로 위임(Phase 8).
 """
 from __future__ import annotations
 
@@ -17,6 +17,8 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from app.domain import media_repo
+from app.domain.identity import compute_content_id
 from app.web import media_tools
 from app.web.auth import require_session
 
@@ -82,27 +84,29 @@ def complete(upload_id: str, request: Request, background: BackgroundTasks) -> d
         for part in sorted(tmp_dir.glob("*.part")):
             out.write(part.read_bytes())
 
-    content_id = deps.compute_content_id(str(merged))
+    content_id = compute_content_id(str(merged))
     ext = os.path.splitext(sess["filename"])[1]
     final = type_dir / f"{content_id}{ext}"
     shutil.move(str(merged), str(final))
     rel_path = f"{_TYPE_DIR[sess['media_type']]}/{final.name}"
-    deps.media_store.upsert(content_id, sess["media_type"], sess["filename"], rel_path)
+    media_repo.upsert_media(deps.db, content_id, sess["media_type"], sess["filename"], rel_path)
 
-    background.add_task(_postprocess, deps, content_id, str(final))
+    background.add_task(
+        _postprocess, deps, content_id, sess["media_type"], sess["filename"], rel_path, str(final)
+    )
 
     shutil.rmtree(tmp_dir, ignore_errors=True)
     deps.uploads.pop(upload_id, None)
     return {"content_id": content_id}
 
 
-def _postprocess(deps, content_id: str, path: str) -> None:
+def _postprocess(deps, content_id, media_type, filename, rel_path, path) -> None:
     """백그라운드: 길이 probe + 썸네일 생성(best-effort; 실패해도 무시)."""
     duration = media_tools.probe_duration(path)
     if duration is not None:
-        row = deps.media_store.get(content_id)
-        if row is not None:
-            row["duration"] = duration
-    thumb_dir = Path(deps.media_root) / "thumbs"
+        # upsert 는 duration 을 COALESCE 로 갱신한다(같은 rel_path 유지).
+        media_repo.upsert_media(deps.db, content_id, media_type, filename, rel_path, duration=duration)
+    # 썸네일은 스키마 규약 경로 .pidio/thumbs/<cid>.jpg 에 저장(스트리밍 라우터가 같은 경로 조회).
+    thumb_dir = Path(deps.media_root) / ".pidio" / "thumbs"
     thumb_dir.mkdir(parents=True, exist_ok=True)
     media_tools.make_thumbnail(path, str(thumb_dir / f"{content_id}.jpg"))

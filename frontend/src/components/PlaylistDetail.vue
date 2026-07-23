@@ -4,7 +4,7 @@ import { ref, computed, onMounted } from 'vue'
 import MusicLane from './MusicLane.vue'
 import ScheduleModal from './ScheduleModal.vue'
 import { scheduleSummary } from '../schedule.js'
-import { playlists as plApi, media as mediaApi, ApiError } from '../api.js'
+import { playlists as plApi, media as mediaApi } from '../api.js'
 import { MOCK_MEDIA, MOCK_PLAYLIST_DETAIL } from '../mock.js'
 import { normalizeBlocks, serializeBlocks, newSlideshow, newVideo, newPhoto } from '../playlistModel.js'
 import { typeEmoji, thumbGradient } from '../mediaView.js'
@@ -64,7 +64,7 @@ async function playNow() {
     await plApi.play(props.id)
     notify('재생을 요청했습니다.')
   } catch {
-    notify('재생은 백엔드 연동(Phase 8) 후 동작합니다.')
+    notify('재생 요청을 처리하지 못했습니다.')
   }
 }
 
@@ -75,12 +75,12 @@ const schedOpen = ref(false)
 function onSchedSaved(sched, opts) {
   pl.value.schedule = sched
   schedOpen.value = false
-  notify(opts?.offline ? '예약 저장됨(샘플 · 백엔드는 Phase 8).' : '예약을 저장했습니다.')
+  notify(opts?.offline ? '예약 저장됨(서버 미연결 · 화면만 반영).' : '예약을 저장했습니다.')
 }
 function onSchedRemoved(opts) {
   pl.value.schedule = null
   schedOpen.value = false
-  notify(opts?.offline ? '예약 삭제됨(샘플 · 백엔드는 Phase 8).' : '예약을 삭제했습니다.')
+  notify(opts?.offline ? '예약 삭제됨(서버 미연결 · 화면만 반영).' : '예약을 삭제했습니다.')
 }
 
 // ---- 편집 ----
@@ -118,12 +118,8 @@ async function save() {
   try {
     await plApi.save(props.id, payload)
     notify('저장했습니다.')
-  } catch (e) {
-    notify(
-      usingMock.value || e instanceof ApiError
-        ? '저장됨(샘플 · 백엔드 /api/playlists 는 Phase 8).'
-        : '저장에 실패했습니다.',
-    )
+  } catch {
+    notify(usingMock.value ? '저장됨(서버 미연결 · 화면만 반영).' : '저장에 실패했습니다.')
   } finally {
     saving.value = false
   }
@@ -166,7 +162,7 @@ function notify(msg) {
         🕒 <b>{{ scheduleText }}</b> 자동 재생
         <button class="edit-sched" @click="schedOpen = true">✏ 예약 수정</button>
       </div>
-      <p v-if="usingMock" class="mock">샘플 데이터 · /api/playlists 는 Phase 8</p>
+      <p v-if="usingMock" class="mock">샘플 데이터 · 서버 미연결</p>
 
       <div class="lanes">
         <MusicLane
