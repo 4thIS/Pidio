@@ -18,6 +18,27 @@ from app.web.mpv_null import NullMpv
 _DEFAULT_DB = Path(__file__).resolve().parent.parent.parent / "pidio.db"
 
 
+def _make_mpv_clients(testing: bool):
+    """PIDIO_MPV=ipc 면 실제 mpv 2인스턴스에 소켓 연결, 아니면 NullMpv.
+
+    소켓 연결 실패(예: mpv 아직 미기동)해도 서버는 뜨고 재생만 무시된다
+    (mpv 먼저 띄우고 서버 재시작하면 연결됨). 재연결 자동화는 Phase 10.2.
+    """
+    if testing or os.environ.get("PIDIO_MPV") != "ipc":
+        return NullMpv(), NullMpv()
+    from app.domain.mpv_ipc import MpvIpc
+
+    video = MpvIpc(os.environ.get("PIDIO_MPV_VIDEO_SOCK", "/tmp/pidio/mpv-video.sock"))
+    music = MpvIpc(os.environ.get("PIDIO_MPV_MUSIC_SOCK", "/tmp/pidio/mpv-music.sock"))
+    for c in (video, music):
+        try:
+            c.connect()
+        except OSError as e:  # noqa: PERF203
+            print(f"[pidio] mpv 소켓 연결 실패({c.sock_path}): {e} "
+                  f"— mpv 먼저 실행 후 서버 재시작 필요")
+    return video, music
+
+
 class Deps:
     """요청 간 공유되는 싱글턴 컨테이너."""
 
@@ -41,12 +62,13 @@ class Deps:
         # 진행 중인 업로드 세션: upload_id -> {filename,size,media_type,tmp_dir}.
         self.uploads: dict[str, dict] = {}
 
-        # ---- 도메인 (Phase 8) ---------------------------------------------
-        # 개발/비-Pi: NullMpv. Pi(Phase 10)에서 MpvIpc 로 교체.
+        # ---- 도메인 (Phase 8/10) ------------------------------------------
+        # PIDIO_MPV=ipc 면 실제 mpv(Pi), 아니면 NullMpv(개발/테스트).
+        video_mpv, music_mpv = _make_mpv_clients(self.testing)
         self.player = Player(
-            NullMpv(), NullMpv(),
-            standby_image="standby.png",
-            music_screen_image="music.png",
+            video_mpv, music_mpv,
+            standby_image=os.environ.get("PIDIO_STANDBY_IMAGE", "standby.png"),
+            music_screen_image=os.environ.get("PIDIO_MUSIC_IMAGE", "music.png"),
         )
         self.service = AppService(self.db, self.player)
 

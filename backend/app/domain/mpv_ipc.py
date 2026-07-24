@@ -33,7 +33,12 @@ class MpvIpc:
         threading.Thread(target=self._reader, daemon=True).start()
 
     def _send(self, args) -> None:
-        self._sock.sendall(encode_command(args).encode())
+        if self._sock is None:
+            return   # 미연결(예: mpv 미기동) — 명령 무시. 재연결은 Phase 10.2
+        try:
+            self._sock.sendall(encode_command(args).encode())
+        except OSError:
+            self._sock = None   # 소켓 끊김 → 이후 명령 무시(서버 크래시 방지)
 
     def _reader(self) -> None:
         buf = b""
