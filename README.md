@@ -24,31 +24,44 @@
 
 ```
 Pidio/
-├─ backend/                 # uv 프로젝트 루트
+├─ backend/                    # uv 프로젝트 루트
 │  ├─ app/
-│  │  ├─ domain/            # 순수 로직 (CW 소유) — mpv/USB 없이 테스트 가능
-│  │  │  └─ contracts.py    #   공통 계약: Block · PlayerState · PlayerController
-│  │  ├─ web/               # FastAPI (DJ 소유)
-│  │  │  ├─ main.py         #   create_app 팩토리 · 정적 SPA 서빙
-│  │  │  ├─ deps.py         #   DB·설정 싱글턴
-│  │  │  ├─ auth.py         #   세션 인증(공용 비번)
-│  │  │  ├─ sse.py          #   /events 실시간 상태 스트림
-│  │  │  ├─ media_tools.py  #   ffmpeg/ffprobe 래퍼
-│  │  │  ├─ upload.py       #   청크 업로드
-│  │  │  ├─ streaming.py    #   Range 스트리밍 · 썸네일 서빙
-│  │  │  └─ adapters.py     #   ⚠ 임시 가짜 어댑터 (Phase 8에서 domain으로 교체)
-│  │  └─ static/            # Vue 빌드 산출물 (자동 생성)
-│  └─ tests/                # pytest
-├─ frontend/                # Vue 소스 (DJ 소유)
+│  │  ├─ domain/               # 순수 로직 — mpv/USB 없이 테스트 가능
+│  │  │  ├─ contracts.py       #   공통 계약: Block · PlayerState · PlayerController
+│  │  │  ├─ db.py              #   SQLite 연결 · init_db (schema.sql)
+│  │  │  ├─ identity.py        #   content_id 계산(크기 + 부분 해시)
+│  │  │  ├─ media_repo.py      #   media 테이블 upsert/조회
+│  │  │  ├─ playlist_repo.py   #   playlists · blocks · block_photos
+│  │  │  ├─ scanner.py         #   USB 스캔 → media 갱신
+│  │  │  ├─ scheduler.py       #   예약 판정(날짜 구간형 / 반복 시간대형)
+│  │  │  ├─ player.py          #   재생 엔진(반복·셔플·자동전환)
+│  │  │  ├─ mpv_ipc.py         #   mpv JSON IPC 클라이언트 (Pi 실행)
+│  │  │  └─ service.py         #   AppService — 웹↔도메인 진입점
+│  │  ├─ web/                  # FastAPI
+│  │  │  ├─ main.py            #   create_app 팩토리 · 정적 SPA 서빙 · 백그라운드 루프
+│  │  │  ├─ deps.py            #   도메인 조립(DB·Player·AppService) 싱글턴
+│  │  │  ├─ auth.py            #   세션 인증(공용 비번)
+│  │  │  ├─ sse.py             #   /events 실시간 상태 스트림
+│  │  │  ├─ media_tools.py     #   ffmpeg/ffprobe 래퍼
+│  │  │  ├─ upload.py          #   청크 업로드
+│  │  │  ├─ streaming.py       #   Range 스트리밍 · 썸네일 서빙
+│  │  │  ├─ serializers.py     #   media 응답 직렬화
+│  │  │  ├─ background.py      #   부팅 스캔 · 분 단위 스케줄 틱
+│  │  │  ├─ mpv_null.py        #   NullMpv — 개발용 무동작 mpv (Pi에서 MpvIpc로 교체)
+│  │  │  └─ routers/           #   media · playlists · schedule · player · settings
+│  │  └─ static/               # Vue 빌드 산출물 (자동 생성)
+│  ├─ scripts/make_samples.py  # 개발용 샘플 미디어 생성(USB 없이 테스트)
+│  └─ tests/                   # pytest
+├─ frontend/                   # Vue 소스
 │  └─ src/
-│     ├─ api.js             #   fetch 래퍼 (401 처리)
-│     ├─ store.js           #   전역 상태 + SSE 구독
-│     ├─ upload.js          #   청크 업로드 클라이언트
+│     ├─ api.js                #   fetch 래퍼 (401 처리)
+│     ├─ store.js              #   전역 상태 + SSE 구독
+│     ├─ upload.js             #   청크 업로드 클라이언트
 │     ├─ format.js / mediaView.js / schedule.js / playlistModel.js   # 순수 유틸(vitest)
-│     ├─ mock.js            #   ⚠ 샘플 데이터 (Phase 8 전 폴백)
-│     └─ components/        #   Login · NowPlaying · Library · MediaCard · HoverPreview
-│                           #   Playlists · PlaylistDetail · MusicLane · ScheduleModal
-│                           #   Uploader · Settings
+│     ├─ mock.js               #   서버 미연결 시 폴백 샘플
+│     └─ components/           #   Login · NowPlaying · Library · MediaCard · HoverPreview
+│                              #   Playlists · PlaylistDetail · MusicLane · ScheduleModal
+│                              #   Uploader · Settings
 └─ docs/
 ```
 
@@ -74,6 +87,7 @@ cd backend && uv run uvicorn app.web.main:app --port 8000     # 터미널 1
 cd frontend && npm run dev                                    # 터미널 2 → http://localhost:5173
 ```
 Vite가 `/api`·`/stream`·`/thumb`·`/events`를 8000으로 프록시.
+Windows에서는 `backend/run-dev.cmd`(샘플 미디어 + `dev.db`로 실행) · `frontend/run-dev.cmd` 런처로 바로 띄울 수 있음.
 
 **빌드본 실행** (서버 하나만)
 ```bash
@@ -84,17 +98,21 @@ cd ../backend && uv run uvicorn app.web.main:app --port 8000   # → http://loca
 **로그인**: 공용 비밀번호 1개. **최초 로그인 시 입력한 비번이 그대로 설정**됩니다.
 비번을 잊었으면 `backend/pidio.db`를 백업(이름 변경)하면 초기화됩니다.
 
-**업로드 테스트**: USB 루트를 지정해서 실행 (기본값 `/media/usb`은 Pi 기준)
-```bash
-PIDIO_MEDIA_ROOT=C:/temp/usb uv run uvicorn app.web.main:app --port 8000
-# C:/temp/usb 안에 videos·pictures·music 폴더 필요. 없으면 409(USB 미연결)
-```
-
 ### 테스트
 ```bash
-cd backend && uv run pytest -q     # 백엔드 21 passed
+cd backend && uv run pytest -q     # 백엔드 141 passed
 cd frontend && npm run test        # 프론트 vitest 33 passed
 ```
+
+### 환경 변수
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `PIDIO_MEDIA_ROOT` | `/media/usb` | USB 미디어 루트. 안에 `videos/` · `pictures/` · `music/` 필요. 개발 시 로컬 폴더(예: `sample_media`) 지정 |
+| `PIDIO_DB` | `backend/pidio.db` | SQLite 파일 경로. 개발 시 `dev.db` 권장 |
+| `PIDIO_UPLOAD_TMP` | (OS 임시폴더)`/pidio_upload` | 업로드 청크 임시 저장 폴더 |
+
+> 테스트 모드(`create_app(testing=True)`)는 DB를 `:memory:`로 열고 백그라운드 루프를 띄우지 않음.
 
 ---
 
@@ -111,7 +129,7 @@ flowchart LR
     subgraph PI["Raspberry Pi 5"]
         subgraph WEB["pidio-web (FastAPI)"]
             W1["auth · sse<br/>upload · streaming"]
-            W2["라우터<br/>(Phase 8)"]
+            W2["라우터<br/>media · playlists · player<br/>schedule · settings"]
             D["domain<br/>AppService · Player<br/>Scheduler · Scanner"]
         end
         MV["mpv 화면<br/>(영상·사진)"]
@@ -122,12 +140,13 @@ flowchart LR
 
     TV["학교 TV"]
 
-    B -->|"HTTP /api/*"| W1
+    B -->|"HTTP /api/*"| W2
     B -->|"업로드 청크"| W1
     W1 -->|"SSE /events<br/>PlayerState"| B
     B -->|"GET /stream /thumb<br/>호버 미리보기·재생"| W1
 
-    W1 --> W2 --> D
+    W1 --> D
+    W2 --> D
     D <--> DB
     W1 -->|"파일 저장·읽기"| USB
     D -->|"스캔"| USB
@@ -135,16 +154,9 @@ flowchart LR
     D -->|"JSON IPC"| MM
     MV -->|HDMI| TV
     MM -->|HDMI 오디오| TV
-
-    classDef done fill:#2d6a4f,stroke:#57b57c,color:#fff
-    classDef wait fill:#4a4368,stroke:#7d8fc4,color:#fff
-    class W1 done
-    class W2,D wait
 ```
 
-> 🟢 = DJ 완료(Phase 6·7) · 🟣 = Phase 8 / CW 도메인 대기
-
-### 업로드 (Phase 7 · 실동작)
+### 업로드
 
 ```mermaid
 sequenceDiagram
@@ -165,7 +177,7 @@ sequenceDiagram
     S-->>B: {content_id}
 ```
 
-### 재생 & 실시간 상태 (Phase 8 연결 예정)
+### 재생 & 실시간 상태
 
 ```mermaid
 sequenceDiagram
@@ -201,6 +213,42 @@ flowchart TD
 
 ---
 
+## 주요 API
+
+모든 `/api/*`는 세션 쿠키 필요(로그인 제외). 자세한 계약은 [`docs/03_api_contract.md`](docs/03_api_contract.md).
+
+| 분류 | 메서드 · 경로 | 설명 |
+|---|---|---|
+| 인증 | `POST /api/login` · `POST /api/logout` · `GET /api/me` | 로그인(최초 비번 설정)·로그아웃·세션 확인 |
+| 실시간 | `GET /events` | SSE — PlayerState 실시간 스트림 |
+| 미디어 | `GET /api/media?type=` · `PATCH /api/media/{content_id}` | 목록 조회 · 제목 수정 |
+| 스트리밍 | `GET /stream/{content_id}` · `GET /thumb/{content_id}` | Range 재생(206) · 썸네일(jpeg) |
+| 업로드 | `POST /api/upload/init` · `PUT /api/upload/{id}/chunk?index=` · `POST /api/upload/{id}/complete` | 청크 업로드 3단계 |
+| 플레이리스트 | `GET·POST /api/playlists` · `GET·PUT·DELETE /api/playlists/{id}` · `POST /api/playlists/{id}/play` | CRUD · 재생 |
+| 예약 | `PUT·DELETE /api/playlists/{id}/schedule` | 예약 설정/삭제 (겹치면 409) |
+| 재생 제어 | `POST /api/play/selection` · `POST /api/player/{action}` | 선택 재생 · `action`=next/prev/pause/resume/stop/resume_auto |
+| 재생 제어 | `POST /api/player/jump·repeat·shuffle·queue/reorder·queue/remove` | 점프·반복·셔플·큐 편집 |
+| 설정 | `GET·PUT /api/settings` · `POST /api/settings/password` · `POST /api/rescan` | 설정 조회/저장 · 비번 변경 · USB 재스캔(미연결 409) |
+
+---
+
+## 데이터 모델
+
+SQLite. 파일 실체는 항상 USB가 진실이고, DB는 부가정보·구성을 담음. 전체 정의는 [`backend/app/domain/schema.sql`](backend/app/domain/schema.sql).
+
+| 테이블 | 핵심 컬럼 | 설명 |
+|---|---|---|
+| `media` | `content_id`(PK) · `media_type` · `original_name` · `custom_title` · `rel_path` · `duration` · `thumb_rel` · `available` | 미디어 부가정보. `content_id`는 내용 해시라 이름·이동에도 유지 |
+| `playlists` | `id`(PK) · `name` · `repeat_mode` · `shuffle` | 블록들의 순서 있는 모음 |
+| `playlist_blocks` | `id`(PK) · `playlist_id`→playlists · `position` · `kind` · `video_id`→media · `music_id`→media | 재생 단위. `kind`=`video`(동영상 1개) 또는 `slideshow`(사진들 + 선택 배경음악) |
+| `block_photos` | `block_id`→blocks · `position` · `photo_id`→media · `duration_sec` | 슬라이드쇼 블록 안의 사진들(라인 순서·표시 시간) |
+| `schedules` | `id`(PK) · `playlist_id`→playlists · `sched_type` · `start_dt`/`end_dt` · `weekdays`/`start_time`/`end_time` · `enabled` | 예약. `sched_type`=`date_range`(날짜 구간형) 또는 `weekly`(반복 시간대형) |
+| `settings` | `key`(PK) · `value` | 전역 설정(기본 재생목록·사진 기본시간·비번 해시 등) |
+
+외래키(`ON DELETE CASCADE`)로 플레이리스트를 지우면 블록·사진·예약이 함께 정리됨.
+
+---
+
 ## 주요 개념
 
 - **content_id** — 파일 식별자. 경로/이름이 아니라 **내용**(크기 + 앞뒤 1MB 해시)으로 계산.
@@ -212,27 +260,42 @@ flowchart TD
 
 ---
 
+## 트러블슈팅
+
+- **cmd.exe에서 환경 변수** — `set PIDIO_MEDIA_ROOT=sample_media` 처럼 한 줄에 하나씩(따옴표·공백 없이). PowerShell은 `$env:PIDIO_MEDIA_ROOT="sample_media"`. 헷갈리면 `backend/run-dev.cmd` 사용.
+- **USB 없이 테스트** — `cd backend && uv run python scripts/make_samples.py` 로 `sample_media/`(영상·음악·사진 샘플) 생성 → `PIDIO_MEDIA_ROOT=sample_media` 로 실행하면 부팅 스캔에 잡힘. (`run-dev.cmd`가 이 값을 이미 설정)
+- **샘플/미디어가 안 보임** — `PIDIO_MEDIA_ROOT`는 **서버를 띄운 바로 그 터미널**에 설정돼야 함(다른 창에서 `set` 해도 반영 안 됨). 런처를 쓰면 확실.
+- **ffmpeg를 찾을 수 없음** — `winget install Gyan.FFmpeg` 후 **새 터미널**에서 실행(또는 ffmpeg `bin`을 PATH에). 썸네일/길이 테스트가 skip되면 미설치 상태.
+- **비밀번호 초기화** — `backend/pidio.db`(또는 `PIDIO_DB` 파일)를 이름 변경/백업 후 재시작 → 다음 로그인에서 입력한 비번이 새로 설정됨.
+- **포트 충돌** — `--port 8001` 등으로 변경.
+- **pytest가 정책 오류로 막힐 때** — `uv run python -m pytest -q` 로 실행.
+
+---
+
+## 문서
+
+- [`docs/01_설계.MD`](docs/01_설계.MD) — 전체 설계(요구사항·데이터 모델·재생/예약 규칙)
+- [`docs/02_구현.md`](docs/02_구현.md) — Phase별 구현 계획·태스크
+- [`docs/03_api_contract.md`](docs/03_api_contract.md) — HTTP API 계약(v1)
+
+---
+
 ## 진행 상황
 
 | Phase | 내용 | 담당 | 상태 |
 |---|---|---|---|
 | 0 | 환경·리포·CLAUDE.md | 공동 | ✅ |
-| 1 | 인터페이스 계약 고정 | 공동 | ✅ 초안 (합의 대기) |
-| 2~5 | 데이터·스캐너 / mpv IPC / 재생 엔진 / 스케줄러 | **CW** | ⬜ |
-| 6 | FastAPI 앱·인증·SSE | **DJ** | ✅ |
-| 7 | 업로드·스트리밍·썸네일 | **DJ** | ✅ |
-| 8 | API 라우터 (도메인 통합) | **DJ** | ⏳ CW Phase 2~5 대기 |
-| 9 | Vue 프론트 | **DJ** | ✅ (D-1~D-7) |
-| 10 | systemd·배포·통합 E2E | 공동 | ⛔ Pi 필요 |
+| 1 | 인터페이스 계약 고정 | 공동 | ✅ |
+| 2~5 | 데이터·스캐너 / mpv IPC / 재생 엔진 / 스케줄러 | CW | ✅ |
+| 6 | FastAPI 앱·인증·SSE | DJ | ✅ |
+| 7 | 업로드·스트리밍·썸네일 | DJ | ✅ |
+| 8 | API 라우터 (도메인 통합) | DJ | ✅ |
+| 9 | Vue 프론트 | DJ | ✅ |
+| 10 | systemd·배포·통합 E2E | 공동 | ⬜ (Pi 필요) |
 
-### 지금 실제로 동작하는 것
-로그인/세션 · SSE 채널(`/events`) · **청크 업로드**(실제 파일 저장) · Range 스트리밍/썸네일 서빙 · SPA 전체 UI(목록·넷플릭스 호버·플리 편집·예약 폼·설정)
+**지금 동작하는 것** — 로그인/세션 · SSE 실시간 상태(`/events`) · 청크 업로드(실제 파일 저장) · Range 스트리밍/썸네일 · 미디어 목록 · 플레이리스트 CRUD · 예약(겹침 409) · 재생 제어 · 설정 · USB 재스캔 · 분 단위 스케줄 틱 · 전체 SPA(목록·넷플릭스 호버·플리 편집·예약 폼·설정).
 
-### Phase 8 대기 중 (배선은 완료)
-미디어 목록(`/api/media`) · 플레이리스트 저장(`/api/playlists`) · 재생 제어(`/api/player/*`) · 예약/설정 저장
-
-> 그 전까지 백엔드는 `app/web/adapters.py`(가짜 어댑터), 프론트는 `src/mock.js`(샘플 데이터)로 폴백.
-> **실제 라우터가 생기면 코드 수정 없이 자동 전환**되도록 구성돼 있음.
+**남은 것 (Phase 10 · Pi 필요)** — systemd 배포 · mpv 실시간 위치(현재 개발용 `NullMpv`, Pi에서 `MpvIpc`로 교체) · USB 마운트 감지 · 실기기 통합 E2E.
 
 ---
 
@@ -245,3 +308,4 @@ flowchart TD
 - **소유 범위**: CW = `backend/app/domain` + 플레이어 / DJ = `backend/app/web` + `frontend`
 - 계약(`contracts.py`·`03_api_contract.md`) 변경은 **상호 합의 후** 문서·코드 동시 갱신
 - main 브랜치 직접 대형 변경 금지 — 기능 브랜치 후 머지
+```
