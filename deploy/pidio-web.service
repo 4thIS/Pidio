@@ -1,0 +1,18 @@
+[Unit]
+Description=Pidio 웹 서버 (FastAPI + 도메인)
+After=pidio-mpv-video.service pidio-mpv-music.service network-online.target
+Wants=network-online.target
+
+[Service]
+User=admin
+Group=admin
+WorkingDirectory=/home/admin/Pidio/backend
+EnvironmentFile=/home/admin/Pidio/deploy/pidio.env
+# mpv 소켓이 준비될 때까지 최대 15초 대기(레이스 방지)
+ExecStartPre=/usr/bin/bash -c 'for i in $(seq 1 30); do [ -S "$PIDIO_MPV_VIDEO_SOCK" ] && [ -S "$PIDIO_MPV_MUSIC_SOCK" ] && exit 0; sleep 0.5; done; exit 1'
+ExecStart=/home/admin/.local/bin/uv run uvicorn app.web.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
