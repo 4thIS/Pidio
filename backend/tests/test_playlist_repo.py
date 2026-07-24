@@ -167,3 +167,17 @@ def test_delete_schedule(tmp_path):
                              "start_time": "12:00", "end_time": "13:00"})
     pr.delete_schedule(c, pid)
     assert pr.list_schedules(c) == []
+
+
+def test_append_selection_keeps_existing(tmp_path):
+    c = _c(tmp_path)
+    _seed_media(c)
+    pid = pr.create_playlist(c, "행사")
+    pr.update_playlist(c, pid, name="행사", repeat_mode="off", shuffle=0,
+                       blocks=[{"kind": "video", "video_id": "v1"}])
+    pr.append_selection(c, pid, ["p1", "m1"])   # 사진·음악 추가
+    blocks = pr.blocks_of(c, pid)
+    assert len(blocks) == 3
+    assert blocks[0].kind == "video"
+    assert blocks[1].kind == "slideshow" and blocks[1].photos  # 사진
+    assert blocks[2].kind == "slideshow" and blocks[2].music_id == "m1"

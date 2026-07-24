@@ -61,6 +61,7 @@ export const media = {
   list: (type = 'all') => api(`/api/media?type=${encodeURIComponent(type)}`),
   patchTitle: (id, custom_title) =>
     api(`/api/media/${id}`, { method: 'PATCH', body: { custom_title } }),
+  remove: (id) => api(`/api/media/${id}`, { method: 'DELETE' }),
 }
 
 // 선택 재생 (Phase 8/Task 8.4)
@@ -77,6 +78,7 @@ export const playlists = {
   save: (id, data) => api(`/api/playlists/${id}`, { method: 'PUT', body: data }),
   remove: (id) => api(`/api/playlists/${id}`, { method: 'DELETE' }),
   play: (id) => api(`/api/playlists/${id}/play`, { method: 'POST' }),
+  add: (id, contentIds) => api(`/api/playlists/${id}/add`, { method: 'POST', body: { content_ids: contentIds } }),
 }
 
 // 설정 (Phase 8/Task 8.5)
@@ -97,6 +99,8 @@ export const schedule = {
 
 // 재생 제어 호출 (백엔드 라우터는 Phase 8/Task 8.4 에서 구현 → 그 전엔 404)
 export const player = {
+  queue: () => api('/api/player/queue'),
+  queueAdd: (contentIds) => api('/api/player/queue/add', { method: 'POST', body: { content_ids: contentIds } }),
   /** action ∈ next|prev|pause|resume|stop|resume_auto */
   action: (name) => api(`/api/player/${name}`, { method: 'POST' }),
   jump: (index) => api('/api/player/jump', { method: 'POST', body: { index } }),

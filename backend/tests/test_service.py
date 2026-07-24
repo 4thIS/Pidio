@@ -90,3 +90,12 @@ def test_scheduled_end_returns_to_standby(tmp_path):
     assert v.loaded == "v1"
     svc.evaluate_schedule(dt.datetime(2026, 8, 3, 13, 30))   # 종료 후 → 대기
     assert v.loaded == "/standby.png"
+
+
+def test_source_playlist_id_tracked(tmp_path):
+    svc, c, player, v, m = _svc(tmp_path)
+    pid = _make_playlist(c, "행사")
+    svc.play_playlist(pid)
+    assert svc.current_source_playlist_id == pid
+    svc.play_selection(["v1"])
+    assert svc.current_source_playlist_id is None

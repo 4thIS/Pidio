@@ -78,3 +78,14 @@ def set_custom_title(conn, content_id, title) -> None:
         "UPDATE media SET custom_title=? WHERE content_id=?", (title, content_id)
     )
     conn.commit()
+
+
+def delete_media(conn, content_id) -> None:
+    """미디어 DB 행 + 이를 참조하는 플리 블록/사진 제거(파일 삭제는 웹 계층)."""
+    conn.execute("DELETE FROM block_photos WHERE photo_id=?", (content_id,))
+    conn.execute(
+        "DELETE FROM playlist_blocks WHERE video_id=? OR music_id=?",
+        (content_id, content_id),
+    )
+    conn.execute("DELETE FROM media WHERE content_id=?", (content_id,))
+    conn.commit()

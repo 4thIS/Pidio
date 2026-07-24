@@ -73,6 +73,41 @@ def update_playlist(conn, playlist_id, name, repeat_mode, shuffle, blocks) -> No
     conn.commit()
 
 
+def append_selection(conn, playlist_id, content_ids) -> None:
+    """전체목록 선택 항목을 플리 끝에 블록으로 추가(기존 블록 보존)."""
+    row = conn.execute(
+        "SELECT COALESCE(MAX(position), -1) FROM playlist_blocks WHERE playlist_id=?",
+        (playlist_id,),
+    ).fetchone()
+    pos = row[0] + 1
+    for cid in content_ids:
+        m = media_repo.get_media(conn, cid)
+        if not m:
+            continue
+        if m["media_type"] == "video":
+            conn.execute(
+                "INSERT INTO playlist_blocks(playlist_id, position, kind, video_id) "
+                "VALUES(?,?,'video',?)",
+                (playlist_id, pos, cid),
+            )
+        else:
+            music_id = cid if m["media_type"] == "music" else None
+            cur = conn.execute(
+                "INSERT INTO playlist_blocks(playlist_id, position, kind, music_id) "
+                "VALUES(?,?,'slideshow',?)",
+                (playlist_id, pos, music_id),
+            )
+            if m["media_type"] == "photo":
+                conn.execute(
+                    "INSERT INTO block_photos(block_id, position, photo_id, duration_sec) "
+                    "VALUES(?,0,?,NULL)",
+                    (cur.lastrowid, cid),
+                )
+        pos += 1
+    conn.execute("UPDATE playlists SET updated_at=? WHERE id=?", (_now(), playlist_id))
+    conn.commit()
+
+
 def delete_playlist(conn, playlist_id) -> None:
     conn.execute("DELETE FROM playlists WHERE id=?", (playlist_id,))
     conn.commit()

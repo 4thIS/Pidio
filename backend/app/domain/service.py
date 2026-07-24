@@ -16,6 +16,7 @@ class AppService:
         self.player = player
         self._now = now_fn or dt.datetime.now
         self._active_playlist_id = None   # 자동 재생 중인 플리(수동이면 None)
+        self.current_source_playlist_id = None  # 현재 재생 소스가 플리면 그 id(즉석선택이면 None)
         self._showing_standby = False
 
     # ---- 수동 재생 ----
@@ -25,6 +26,7 @@ class AppService:
             blocks, source_label="전체 선택", repeat=repeat, shuffle=shuffle, manual=True
         )
         self._active_playlist_id = None
+        self.current_source_playlist_id = None
         self._showing_standby = False
 
     def play_playlist(self, playlist_id, manual=True):
@@ -40,6 +42,7 @@ class AppService:
             manual=manual,
         )
         self._active_playlist_id = None if manual else playlist_id
+        self.current_source_playlist_id = playlist_id
         self._showing_standby = False
 
     # ---- 자동(스케줄) ----
@@ -54,6 +57,7 @@ class AppService:
             if not self._showing_standby:
                 self.player.stop_to_standby()
                 self._active_playlist_id = None
+                self.current_source_playlist_id = None
                 self._showing_standby = True
             return
         if target != self._active_playlist_id:

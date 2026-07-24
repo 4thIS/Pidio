@@ -6,6 +6,7 @@ import { store, connectEvents, disconnectEvents } from './store.js'
 import { auth } from './api.js'
 import Login from './components/Login.vue'
 import NowPlaying from './components/NowPlaying.vue'
+import PlayQueue from './components/PlayQueue.vue'
 import Playlists from './components/Playlists.vue'
 import Library from './components/Library.vue'
 import PlaylistDetail from './components/PlaylistDetail.vue'
@@ -60,6 +61,7 @@ async function logout() {
     </div>
 
     <NowPlaying />
+    <PlayQueue />
 
     <Settings v-if="showSettings" @close="showSettings = false" />
 

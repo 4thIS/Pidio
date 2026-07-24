@@ -2,7 +2,7 @@
 // D-3 전체 목록 — 타입 탭 · 체크박스 다중선택 · 넷플릭스 호버 미리보기.
 import { ref, reactive, computed, onMounted } from 'vue'
 import MediaCard from './MediaCard.vue'
-import { media as mediaApi, play as playApi, ApiError } from '../api.js'
+import { media as mediaApi, play as playApi, player as playerApi, ApiError } from '../api.js'
 import { MOCK_MEDIA } from '../mock.js'
 
 const TABS = [
@@ -62,6 +62,25 @@ async function playSelection() {
     notify('재생 요청을 처리하지 못했습니다.')
   }
 }
+async function addToQueue(id) {
+  try {
+    await playerApi.queueAdd([id])
+    notify('재생목록에 추가했습니다.')
+  } catch {
+    notify('추가하지 못했습니다.')
+  }
+}
+async function deleteMedia(id) {
+  if (!confirm('이 파일을 삭제할까요? (USB에서 제거됩니다)')) return
+  try {
+    await mediaApi.remove(id)
+    items.value = items.value.filter((m) => m.content_id !== id)
+    selected.delete(id)
+    notify('삭제했습니다.')
+  } catch {
+    notify('삭제하지 못했습니다.')
+  }
+}
 function todo(what) {
   // 큐 추가·목록 저장은 아직 미구현 기능(엔드포인트 없음).
   notify(`${what} 기능은 준비 중입니다.`)
@@ -116,6 +135,8 @@ function notify(msg) {
         :selected="selected.has(m.content_id)"
         @toggle="toggle"
         @save-title="saveTitle"
+        @add-queue="addToQueue"
+        @delete="deleteMedia"
       />
     </div>
   </section>

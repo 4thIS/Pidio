@@ -12,6 +12,7 @@ defineProps({ item: Object })
     <video
       v-if="item.media_type === 'video'"
       class="media"
+      draggable="false"
       :src="`/stream/${item.content_id}`"
       muted
       autoplay
@@ -22,6 +23,7 @@ defineProps({ item: Object })
     <img
       v-else-if="item.media_type === 'photo'"
       class="media"
+      draggable="false"
       :src="`/stream/${item.content_id}`"
       alt=""
     />

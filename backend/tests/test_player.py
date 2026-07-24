@@ -401,3 +401,30 @@ def test_get_state_resolves_title_and_current_id():
     st = p.get_state()
     assert st.current_id == "vid1"          # content_id 원본
     assert st.current_title == "졸업식.mp4"   # 파일명으로 변환
+
+
+def test_queue_view_order_and_current():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="a"),
+                   Block(kind="video", video_id="b")], "s")
+    view = p.queue_view()
+    assert [it["content_id"] for it in view] == ["a", "b"]
+    assert view[0]["current"] is True and view[1]["current"] is False
+
+
+def test_load_resets_pause():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4")], "s")
+    p.pause()
+    assert v.props.get("pause") in (True, "yes")
+    p.play_blocks([Block(kind="video", video_id="/v/b.mp4")], "s")  # 새 재생
+    assert v.props.get("pause") in (False, "no")   # pause 리셋됨
+
+
+def test_enqueue_to_idle_autoplays():
+    p, v, m = _p()
+    p.play_blocks([], "빈")   # 대기(standby)
+    assert p.status == "standby"
+    p.enqueue([Block(kind="video", video_id="/v/x.mp4")])
+    assert v.loaded == "/v/x.mp4"      # 바로 재생 시작
+    assert p.status == "playing"

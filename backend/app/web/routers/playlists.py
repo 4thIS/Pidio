@@ -77,3 +77,10 @@ def play_playlist(playlist_id: int, request: Request) -> dict:
     deps.service.play_playlist(playlist_id, manual=True)
     request.app.state.hub.publish(deps.player.get_state())
     return {"ok": True}
+
+
+@router.post("/{playlist_id}/add")
+async def add_to_playlist(playlist_id: int, request: Request) -> dict:
+    data = await request.json()
+    playlist_repo.append_selection(_db(request), playlist_id, data.get("content_ids", []))
+    return {"ok": True}

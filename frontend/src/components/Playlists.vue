@@ -26,8 +26,12 @@ async function load() {
 }
 
 function coverStyle(id) {
-  const m = mediaById(id)
-  return { background: thumbGradient({ content_id: id, media_type: m ? m.media_type : 'photo' }) }
+  return {
+    backgroundImage: `url(/thumb/${id})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundColor: '#1a2129',
+  }
 }
 
 async function play(pl) {
@@ -58,6 +62,53 @@ async function remove(pl) {
   }
 }
 
+const editingId = ref(null)
+const draft = ref('')
+function startEdit(pl) {
+  editingId.value = pl.id
+  draft.value = pl.name
+}
+async function commitEdit(pl) {
+  const t = draft.value.trim()
+  editingId.value = null
+  if (!t || t === pl.name) return
+  try {
+    const full = await plApi.get(pl.id)
+    await plApi.save(pl.id, {
+      name: t,
+      repeat_mode: full.repeat_mode,
+      shuffle: full.shuffle,
+      blocks: full.blocks || [],
+    })
+    pl.name = t
+    notify('이름을 변경했습니다.')
+  } catch {
+    notify('이름 변경 실패.')
+  }
+}
+
+const dragOverId = ref(null)
+function onCardDragStart(e, pl) {
+  e.dataTransfer.setData('application/x-pidio-playlist', JSON.stringify({ id: pl.id }))
+  e.dataTransfer.effectAllowed = 'copy'
+}
+function onCardDragOver(e, pl) {
+  if ([...(e.dataTransfer?.types || [])].includes('application/x-pidio-media')) {
+    e.preventDefault()
+    dragOverId.value = pl.id
+  }
+}
+function onCardDrop(e, pl) {
+  dragOverId.value = null
+  const media = e.dataTransfer.getData('application/x-pidio-media')
+  if (!media) return
+  e.preventDefault()
+  const { content_id } = JSON.parse(media)
+  plApi.add(pl.id, [content_id])
+    .then(() => { pl.item_count = (pl.item_count || 0) + 1; notify(`"${pl.name}"에 추가됨.`) })
+    .catch(() => notify('추가하지 못했습니다.'))
+}
+
 let nt = null
 function notify(msg) {
   notice.value = msg
@@ -75,13 +126,27 @@ function notify(msg) {
     </div>
 
     <div class="pls">
-      <div v-for="pl in items" :key="pl.id" class="pl" @click="emit('open', pl.id)">
+      <div v-for="pl in items" :key="pl.id" class="pl" :class="{ dragover: dragOverId === pl.id }" @click="emit('open', pl.id)"
+           draggable="true" @dragstart="onCardDragStart($event, pl)"
+           @dragover="onCardDragOver($event, pl)" @dragleave="dragOverId = null" @drop="onCardDrop($event, pl)">
         <div class="cover">
           <span v-for="(c, i) in (pl.cover_content_ids || pl.cover || []).slice(0, 3)" :key="i" class="s" :class="'s' + i" :style="coverStyle(c)"></span>
           <button class="del" @click.stop="remove(pl)" aria-label="삭제" title="목록 삭제">🗑</button>
           <button class="play" @click.stop="play(pl)" aria-label="재생">▶</button>
         </div>
-        <div class="nm">{{ pl.name }}</div>
+        <input
+          v-if="editingId === pl.id"
+          v-model="draft"
+          class="nmedit"
+          @click.stop
+          @keyup.enter="commitEdit(pl)"
+          @blur="commitEdit(pl)"
+          @keyup.esc="editingId = null"
+        />
+        <div v-else class="nm">
+          <span class="txt">{{ pl.name }}</span>
+          <button class="pen" @click.stop="startEdit(pl)" aria-label="이름 수정">✎</button>
+        </div>
         <div class="mt">
           <span>{{ pl.item_count }}개</span>
           <span>{{ formatTime(pl.total_sec) }}</span>
@@ -126,6 +191,7 @@ function notify(msg) {
   transition: border-color 0.15s;
 }
 .pl:hover { border-color: var(--muted); }
+.pl.dragover { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent); }
 .cover {
   height: 82px;
   border-radius: 8px;
@@ -181,7 +247,18 @@ function notify(msg) {
 }
 .pl:hover .cover .del { opacity: 1; }
 .cover .del:hover { background: #c0392b; }
-.nm { font-size: 12.5px; font-weight: 640; margin-top: 9px; }
+.nm {
+  font-size: 12.5px;
+  font-weight: 640;
+  margin-top: 9px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.nm .txt { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nm .pen { opacity: 0; border: none; background: transparent; color: var(--muted); font-size: 11px; padding: 0 2px; flex: none; transition: opacity 0.15s; }
+.pl:hover .nm .pen { opacity: 1; }
+.nmedit { width: 100%; margin-top: 9px; background: var(--bg); border: 1px solid var(--teal); border-radius: 6px; color: var(--text); font-size: 12px; padding: 3px 6px; box-sizing: border-box; }
 .mt {
   font-size: 11px;
   color: var(--faint);

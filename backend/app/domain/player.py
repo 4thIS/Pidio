@@ -95,10 +95,16 @@ class Player:
 
     # ---- 큐 편집 (현재 재생 블록 유지) ----
     def enqueue(self, blocks):
+        was_idle = self.pos < 0 or not self.order
         cur = self._current_block()
         self.queue.extend(blocks)
         self._rebuild_order()
-        self._restore_pos(cur)
+        if was_idle and self.order and blocks:
+            new_first = len(self.queue) - len(blocks)   # 첫 새 블록의 큐 인덱스
+            self.pos = self.order.index(new_first)
+            self._load_current()   # 대기중이었으면 새 항목부터 바로 재생
+        else:
+            self._restore_pos(cur)
 
     def remove(self, index):
         if not (0 <= index < len(self.queue)):
@@ -150,6 +156,20 @@ class Player:
             duration_sec=self.duration_sec,
         )
 
+    def queue_view(self):
+        """재생 큐를 재생 순서대로 [{content_id, kind, current}]. 큐 패널용."""
+        out = []
+        for i, oi in enumerate(self.order):
+            b = self.queue[oi]
+            if b.kind == "video":
+                cid = b.video_id
+            elif b.photos:
+                cid = b.photos[0][0]
+            else:
+                cid = b.music_id
+            out.append({"content_id": cid, "kind": b.kind, "current": i == self.pos})
+        return out
+
     # ---- 내부 ----
     def _rebuild_order(self):
         self.order = list(range(len(self.queue)))
@@ -184,6 +204,8 @@ class Player:
         self._photo_idx = 0
         self.position_sec = 0.0
         self.duration_sec = 0.0
+        self.v.set_property("pause", False)   # 이전 일시정지 상태가 남지 않게
+        self.m.set_property("pause", False)
         if b.kind == "video":
             self.m.stop()
             extra = {"loop-file": "inf"} if self.repeat == "one" else None

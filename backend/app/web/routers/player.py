@@ -8,9 +8,31 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from app.domain import media_repo, playlist_repo
 from app.web.auth import require_session
 
 router = APIRouter(prefix="/api", tags=["player"], dependencies=[Depends(require_session)])
+
+
+@router.get("/player/queue")
+def player_queue(request: Request) -> dict:
+    deps = request.app.state.deps
+    items = []
+    for it in deps.player.queue_view():
+        m = media_repo.get_media(deps.db, it["content_id"])
+        items.append({
+            "content_id": it["content_id"],
+            "title": (m["custom_title"] or m["original_name"]) if m else it["content_id"],
+            "thumb_url": (f"/thumb/{it['content_id']}"
+                          if m and m["media_type"] != "music" else None),
+            "kind": it["kind"],
+            "current": it["current"],
+        })
+    src = None
+    pid = deps.service.current_source_playlist_id
+    if pid is not None:
+        src = next((p for p in playlist_repo.list_playlists(deps.db) if p["id"] == pid), None)
+    return {"source_playlist": src, "items": items}
 
 # player 의 인자 없는 단순 동작.
 _SIMPLE = {
@@ -107,5 +129,15 @@ def player_action(action: str, request: Request) -> dict:
     if fn is None:
         raise HTTPException(status_code=404, detail="unknown action")
     fn(request.app.state.deps)
+    _publish(request)
+    return {"ok": True}
+
+
+@router.post("/player/queue/add")
+async def queue_add(request: Request) -> dict:
+    deps = request.app.state.deps
+    data = await request.json()
+    blocks = playlist_repo.selection_to_blocks(deps.db, data.get("content_ids", []))
+    deps.player.enqueue(blocks)
     _publish(request)
     return {"ok": True}

@@ -28,6 +28,8 @@ function onDrop(e) {
   e.preventDefault()
   depth = 0
   dragging.value = false
+  const types = [...(e.dataTransfer?.types || [])]
+  if (types.some((t) => t.startsWith('application/x-pidio-'))) return // 내부 드래그(업로드 아님)
   const files = [...(e.dataTransfer?.files || [])]
   if (files.length) start(files)
 }

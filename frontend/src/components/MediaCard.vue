@@ -6,7 +6,7 @@ import { typeEmoji, typeLabel, thumbGradient } from '../mediaView.js'
 import { formatTime } from '../format.js'
 
 const props = defineProps({ item: Object, selected: Boolean })
-const emit = defineEmits(['toggle', 'save-title'])
+const emit = defineEmits(['toggle', 'save-title', 'add-queue', 'delete'])
 
 // ---- 호버 미리보기 (200ms 디바운스) ----
 const expanded = ref(false)
@@ -39,6 +39,11 @@ const thumbSrc = computed(() =>
   props.item.thumb_url && !thumbFailed.value ? props.item.thumb_url : null,
 )
 
+function onDragStart(e) {
+  e.dataTransfer.setData('application/x-pidio-media', JSON.stringify({ content_id: props.item.content_id, media_type: props.item.media_type }))
+  e.dataTransfer.effectAllowed = 'copy'
+}
+
 const durText = computed(() =>
   props.item.media_type === 'photo' ? '' : formatTime(props.item.duration),
 )
@@ -50,6 +55,8 @@ const durText = computed(() =>
     :class="{ sel: selected, expanded, dim: item.available === false }"
     @mouseenter="enter"
     @mouseleave="leave"
+    draggable="true"
+    @dragstart="onDragStart"
   >
     <div class="thumb" :style="{ background: thumbGradient(item) }">
       <button
@@ -61,9 +68,14 @@ const durText = computed(() =>
         <span v-if="selected">✓</span>
       </button>
 
+      <div class="acts">
+        <button class="act" @click.stop="emit('add-queue', item.content_id)" title="재생목록에 추가">＋</button>
+        <button class="act del" @click.stop="emit('delete', item.content_id)" title="삭제">🗑</button>
+      </div>
+
       <HoverPreview v-if="expanded" :item="item" />
       <template v-else>
-        <img v-if="thumbSrc" class="thumbimg" :src="thumbSrc" alt="" @error="thumbFailed = true" />
+        <img v-if="thumbSrc" class="thumbimg" :src="thumbSrc" alt="" draggable="false" @error="thumbFailed = true" />
         <span v-else class="emoji">{{ typeEmoji(item.media_type) }}</span>
         <span v-if="durText" class="dur">{{ durText }}</span>
       </template>
@@ -74,6 +86,7 @@ const durText = computed(() =>
         v-if="editing"
         v-model="draft"
         class="edit"
+        draggable="false"
         @keyup.enter="commit"
         @blur="commit"
         @keyup.esc="editing = false"
@@ -140,6 +153,31 @@ const durText = computed(() =>
   background: var(--accent);
   border-color: var(--accent);
 }
+.acts {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 5px;
+  opacity: 0;
+  z-index: 3;
+  transition: opacity 0.15s;
+}
+.card:hover .acts { opacity: 1; }
+.act {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.act:hover { background: rgba(0, 0, 0, 0.85); }
+.act.del:hover { background: #c0392b; }
 .dur {
   position: absolute;
   bottom: 6px;
