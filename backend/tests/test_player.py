@@ -274,3 +274,45 @@ def test_next_at_last_is_noop_when_repeat_off():
     p.next()                       # 마지막 + repeat off -> 무동작
     assert v.loaded == "SENTINEL"  # 재생물 그대로(재시작 안 함)
     assert p.pos == 1
+
+
+# ---- on_state_change 콜백 (auto-advance/사진진행 시 SSE 방송용) ----
+
+def test_on_state_change_fires_on_auto_advance():
+    p, v, m = _p()
+    seen = []
+    p.on_state_change = lambda: seen.append(p.get_state().current_title)
+    p.play_blocks(
+        [Block(kind="video", video_id="/v/a.mp4"),
+         Block(kind="video", video_id="/v/b.mp4")],
+        "s",
+    )
+    v.fire_end_file()                 # a 끝 → b 로 자동 전환
+    assert seen and seen[-1] == "/v/b.mp4"
+
+
+def test_on_state_change_fires_on_photo_progression():
+    p, v, m = _p()
+    seen = []
+    p.on_state_change = lambda: seen.append(v.loaded)
+    p.play_blocks(
+        [Block(kind="slideshow", photos=[("/p/1.jpg", 5), ("/p/2.jpg", 5)])], "s"
+    )
+    v.fire_end_file()                 # 1.jpg → 2.jpg
+    assert seen and seen[-1] == "/p/2.jpg"
+
+
+def test_on_state_change_fires_on_queue_end_standby():
+    p, v, m = _p()
+    seen = []
+    p.on_state_change = lambda: seen.append(p.status)
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4")], "s", repeat="off")
+    v.fire_end_file()                 # 큐 끝 → 대기화면
+    assert seen and seen[-1] == "standby"
+
+
+def test_on_state_change_none_is_safe():
+    p, v, m = _p()                    # 콜백 미설정
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4")], "s")
+    v.fire_end_file()                 # 예외 없이 동작해야 함
+    assert p.status == "standby"

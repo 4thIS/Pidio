@@ -12,7 +12,7 @@ from .contracts import PlayerState
 
 
 class Player:
-    def __init__(self, video, music, standby_image, music_screen_image):
+    def __init__(self, video, music, standby_image, music_screen_image, on_state_change=None):
         self.v = video
         self.m = music
         self.standby_image = standby_image
@@ -26,6 +26,7 @@ class Player:
         self.status = "standby"
         self.source_label = None
         self._photo_idx = 0
+        self.on_state_change = on_state_change   # 상태 변경 콜백(SSE 방송용)
         self.v.on_end_file(lambda reason: self._on_end())
 
     # ---- 재생 시작/이동 ----
@@ -197,8 +198,17 @@ class Player:
         self.v.loadfile(self.standby_image, {"image-display-duration": "inf"})
         self.m.stop()
 
+    def _notify(self):
+        """상태 변경을 외부(웹 SSE)에 알린다. 미설정이면 무시."""
+        if self.on_state_change:
+            self.on_state_change()
+
     def _on_end(self):
-        """mpv 재생 종료 이벤트: 슬라이드쇼면 다음 사진, 아니면 다음 블록."""
+        """mpv 재생 종료 이벤트: 슬라이드쇼면 다음 사진, 아니면 다음 블록.
+
+        라우터를 거치지 않는 자동 전환이므로 여기서 on_state_change 를 호출해
+        '지금 재생 중'이 즉시 갱신되게 한다(SSE).
+        """
         b = self._current_block()
         if (
             b
@@ -209,8 +219,9 @@ class Player:
             self._photo_idx += 1
             pid, sec = b.photos[self._photo_idx]
             self.v.loadfile(pid, {"image-display-duration": sec})
-            return
-        self._advance()
+        else:
+            self._advance()
+        self._notify()
 
     def _advance(self):
         """블록 자연 종료 시 다음 블록으로(반복/셔플 규칙 적용)."""

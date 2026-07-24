@@ -45,6 +45,10 @@ def create_app(testing: bool = False) -> FastAPI:
     app = FastAPI(title="Pidio", lifespan=None if testing else _lifespan)
     app.state.deps = Deps(testing=testing)
     app.state.hub = StateHub()
+    # 자동 상태변경(auto-advance·사진진행)도 SSE로 즉시 방송되게 연결(도메인 훅 → 허브)
+    app.state.deps.player.on_state_change = (
+        lambda: app.state.hub.publish(app.state.deps.player.get_state())
+    )
 
     @app.get("/api/health")
     def health() -> dict:
