@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 
 from app.domain import db as domain_db
+from app.domain import media_repo
 from app.domain.player import Player
 from app.domain.service import AppService
 from app.web.mpv_null import NullMpv
@@ -65,10 +66,19 @@ class Deps:
         # ---- 도메인 (Phase 8/10) ------------------------------------------
         # PIDIO_MPV=ipc 면 실제 mpv(Pi), 아니면 NullMpv(개발/테스트).
         video_mpv, music_mpv = _make_mpv_clients(self.testing)
+
+        def _resolve_media(content_id: str) -> str:
+            # content_id → USB 내 실제 절대경로(media_root + rel_path). 못 찾으면 원본.
+            m = media_repo.get_media(self.db, content_id)
+            if m and m["rel_path"]:
+                return os.path.join(self.media_root, m["rel_path"])
+            return content_id
+
         self.player = Player(
             video_mpv, music_mpv,
             standby_image=os.environ.get("PIDIO_STANDBY_IMAGE", "standby.png"),
             music_screen_image=os.environ.get("PIDIO_MUSIC_IMAGE", "music.png"),
+            resolve_path=_resolve_media,
         )
         self.service = AppService(self.db, self.player)
 

@@ -12,7 +12,7 @@ from .contracts import PlayerState
 
 
 class Player:
-    def __init__(self, video, music, standby_image, music_screen_image, on_state_change=None):
+    def __init__(self, video, music, standby_image, music_screen_image, on_state_change=None, resolve_path=None):
         self.v = video
         self.m = music
         self.standby_image = standby_image
@@ -27,6 +27,7 @@ class Player:
         self.source_label = None
         self._photo_idx = 0
         self.on_state_change = on_state_change   # 상태 변경 콜백(SSE 방송용)
+        self._resolve = resolve_path or (lambda cid: cid)  # content_id → 실제 파일 경로
         self.v.on_end_file(lambda reason: self._on_end())
 
     # ---- 재생 시작/이동 ----
@@ -179,15 +180,15 @@ class Player:
         if b.kind == "video":
             self.m.stop()
             extra = {"loop-file": "inf"} if self.repeat == "one" else None
-            self.v.loadfile(b.video_id, extra)
+            self.v.loadfile(self._resolve(b.video_id), extra)
         else:  # slideshow
             if b.music_id:
-                self.m.loadfile(b.music_id, {"loop-file": "inf"})
+                self.m.loadfile(self._resolve(b.music_id), {"loop-file": "inf"})
             else:
                 self.m.stop()
             if b.photos:
                 pid, sec = b.photos[0]
-                self.v.loadfile(pid, {"image-display-duration": sec})
+                self.v.loadfile(self._resolve(pid), {"image-display-duration": sec})
             else:
                 self.v.loadfile(
                     self.music_screen_image, {"image-display-duration": "inf"}
@@ -218,7 +219,7 @@ class Player:
         ):
             self._photo_idx += 1
             pid, sec = b.photos[self._photo_idx]
-            self.v.loadfile(pid, {"image-display-duration": sec})
+            self.v.loadfile(self._resolve(pid), {"image-display-duration": sec})
         else:
             self._advance()
         self._notify()
