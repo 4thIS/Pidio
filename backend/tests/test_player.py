@@ -370,3 +370,24 @@ def test_refresh_position_none_is_zero():
     p.play_blocks([Block(kind="video", video_id="/v/a.mp4")], "s")
     p.refresh_position()
     assert p.get_state().position_sec == 0.0
+
+
+# ---- end-file reason 필터 (loadfile 교체가 유발하는 spurious advance 방지) ----
+
+def test_end_file_non_eof_does_not_advance():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4"),
+                   Block(kind="video", video_id="/v/b.mp4")], "s")
+    assert v.loaded == "/v/a.mp4"
+    v.fire_end_file(reason="redirect")   # 파일 교체로 인한 end-file
+    assert v.loaded == "/v/a.mp4"        # advance 안 함
+    v.fire_end_file(reason="stop")
+    assert v.loaded == "/v/a.mp4"
+
+
+def test_end_file_eof_advances():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4"),
+                   Block(kind="video", video_id="/v/b.mp4")], "s")
+    v.fire_end_file(reason="eof")
+    assert v.loaded == "/v/b.mp4"        # 자연 종료 → 다음

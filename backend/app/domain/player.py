@@ -30,7 +30,7 @@ class Player:
         self._photo_idx = 0
         self.on_state_change = on_state_change   # 상태 변경 콜백(SSE 방송용)
         self._resolve = resolve_path or (lambda cid: cid)  # content_id → 실제 파일 경로
-        self.v.on_end_file(lambda reason: self._on_end())
+        self.v.on_end_file(lambda reason: self._on_end(reason))
 
     # ---- 재생 시작/이동 ----
     def play_blocks(self, blocks, source_label, repeat="off", shuffle=False, manual=True):
@@ -215,12 +215,15 @@ class Player:
         if self.on_state_change:
             self.on_state_change()
 
-    def _on_end(self):
+    def _on_end(self, reason="eof"):
         """mpv 재생 종료 이벤트: 슬라이드쇼면 다음 사진, 아니면 다음 블록.
 
-        라우터를 거치지 않는 자동 전환이므로 여기서 on_state_change 를 호출해
-        '지금 재생 중'이 즉시 갱신되게 한다(SSE).
+        자연 종료(eof)·오류(error)에만 진행한다. loadfile 교체가 유발하는
+        stop/redirect 등의 end-file은 무시해야 spurious advance(연쇄 전환)를 막는다.
+        라우터를 거치지 않는 자동 전환이므로 on_state_change 로 '지금 재생 중'을 즉시 갱신(SSE).
         """
+        if reason not in ("eof", "error"):
+            return
         b = self._current_block()
         if (
             b

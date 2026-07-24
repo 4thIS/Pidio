@@ -47,6 +47,17 @@ async function create() {
   }
 }
 
+async function remove(pl) {
+  if (!confirm(`"${pl.name}" 목록을 삭제할까요?`)) return
+  try {
+    await plApi.remove(pl.id)
+    items.value = items.value.filter((x) => x.id !== pl.id)
+    notify(`"${pl.name}" 삭제됨.`)
+  } catch {
+    notify('삭제하지 못했습니다.')
+  }
+}
+
 let nt = null
 function notify(msg) {
   notice.value = msg
@@ -67,6 +78,7 @@ function notify(msg) {
       <div v-for="pl in items" :key="pl.id" class="pl" @click="emit('open', pl.id)">
         <div class="cover">
           <span v-for="(c, i) in (pl.cover_content_ids || pl.cover || []).slice(0, 3)" :key="i" class="s" :class="'s' + i" :style="coverStyle(c)"></span>
+          <button class="del" @click.stop="remove(pl)" aria-label="삭제" title="목록 삭제">🗑</button>
           <button class="play" @click.stop="play(pl)" aria-label="재생">▶</button>
         </div>
         <div class="nm">{{ pl.name }}</div>
@@ -150,6 +162,25 @@ function notify(msg) {
   z-index: 2;
 }
 .pl:hover .cover .play { opacity: 1; }
+.cover .del {
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  z-index: 2;
+}
+.pl:hover .cover .del { opacity: 1; }
+.cover .del:hover { background: #c0392b; }
 .nm { font-size: 12.5px; font-weight: 640; margin-top: 9px; }
 .mt {
   font-size: 11px;
