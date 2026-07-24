@@ -1,0 +1,13 @@
+[Unit]
+Description=Pidio 화면 채널 (mpv video/photo, KMS/DRM)
+
+[Service]
+User=admin
+Group=admin
+SupplementaryGroups=video render input
+ExecStart=/home/admin/Pidio/deploy/start-mpv-video.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

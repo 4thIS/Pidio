@@ -1,0 +1,13 @@
+[Unit]
+Description=Pidio 음악 채널 (mpv audio)
+
+[Service]
+User=admin
+Group=admin
+SupplementaryGroups=audio
+ExecStart=/home/admin/Pidio/deploy/start-mpv-music.sh
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
