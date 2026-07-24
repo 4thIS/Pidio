@@ -316,3 +316,32 @@ def test_on_state_change_none_is_safe():
     p.play_blocks([Block(kind="video", video_id="/v/a.mp4")], "s")
     v.fire_end_file()                 # 예외 없이 동작해야 함
     assert p.status == "standby"
+
+
+# ---- content_id → 실제 경로 변환(resolve_path) ----
+
+def test_resolve_path_applied_to_video():
+    v, m = FakeMpv(), FakeMpv()
+    p = Player(v, m, "/standby.png", "/music.png",
+               resolve_path=lambda cid: f"/media/videos/{cid}.mp4")
+    p.play_blocks([Block(kind="video", video_id="vid1")], "s")
+    assert v.loaded == "/media/videos/vid1.mp4"   # content_id 아님, 실제 경로
+
+
+def test_resolve_path_applied_to_photo_and_music():
+    v, m = FakeMpv(), FakeMpv()
+    p = Player(v, m, "/standby.png", "/music.png",
+               resolve_path=lambda cid: f"/media/{cid}")
+    p.play_blocks(
+        [Block(kind="slideshow", music_id="song", photos=[("pic1", 5.0)])], "s"
+    )
+    assert v.loaded == "/media/pic1"
+    assert m.loaded == "/media/song"
+
+
+def test_resolve_default_is_identity():
+    # resolve_path 미지정이면 그대로(테스트 호환)
+    v, m = FakeMpv(), FakeMpv()
+    p = Player(v, m, "/standby.png", "/music.png")
+    p.play_blocks([Block(kind="video", video_id="/abs/a.mp4")], "s")
+    assert v.loaded == "/abs/a.mp4"
