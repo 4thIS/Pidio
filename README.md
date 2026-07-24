@@ -260,42 +260,11 @@ SQLite. 파일 실체는 항상 USB가 진실이고, DB는 부가정보·구성�
 
 ---
 
-## 트러블슈팅
-
-- **cmd.exe에서 환경 변수** — `set PIDIO_MEDIA_ROOT=sample_media` 처럼 한 줄에 하나씩(따옴표·공백 없이). PowerShell은 `$env:PIDIO_MEDIA_ROOT="sample_media"`. 헷갈리면 `backend/run-dev.cmd` 사용.
-- **USB 없이 테스트** — `cd backend && uv run python scripts/make_samples.py` 로 `sample_media/`(영상·음악·사진 샘플) 생성 → `PIDIO_MEDIA_ROOT=sample_media` 로 실행하면 부팅 스캔에 잡힘. (`run-dev.cmd`가 이 값을 이미 설정)
-- **샘플/미디어가 안 보임** — `PIDIO_MEDIA_ROOT`는 **서버를 띄운 바로 그 터미널**에 설정돼야 함(다른 창에서 `set` 해도 반영 안 됨). 런처를 쓰면 확실.
-- **ffmpeg를 찾을 수 없음** — `winget install Gyan.FFmpeg` 후 **새 터미널**에서 실행(또는 ffmpeg `bin`을 PATH에). 썸네일/길이 테스트가 skip되면 미설치 상태.
-- **비밀번호 초기화** — `backend/pidio.db`(또는 `PIDIO_DB` 파일)를 이름 변경/백업 후 재시작 → 다음 로그인에서 입력한 비번이 새로 설정됨.
-- **포트 충돌** — `--port 8001` 등으로 변경.
-- **pytest가 정책 오류로 막힐 때** — `uv run python -m pytest -q` 로 실행.
-
----
-
 ## 문서
 
 - [`docs/01_설계.MD`](docs/01_설계.MD) — 전체 설계(요구사항·데이터 모델·재생/예약 규칙)
 - [`docs/02_구현.md`](docs/02_구현.md) — Phase별 구현 계획·태스크
 - [`docs/03_api_contract.md`](docs/03_api_contract.md) — HTTP API 계약(v1)
-
----
-
-## 진행 상황
-
-| Phase | 내용 | 담당 | 상태 |
-|---|---|---|---|
-| 0 | 환경·리포·CLAUDE.md | 공동 | ✅ |
-| 1 | 인터페이스 계약 고정 | 공동 | ✅ |
-| 2~5 | 데이터·스캐너 / mpv IPC / 재생 엔진 / 스케줄러 | CW | ✅ |
-| 6 | FastAPI 앱·인증·SSE | DJ | ✅ |
-| 7 | 업로드·스트리밍·썸네일 | DJ | ✅ |
-| 8 | API 라우터 (도메인 통합) | DJ | ✅ |
-| 9 | Vue 프론트 | DJ | ✅ |
-| 10 | systemd·배포·통합 E2E | 공동 | ⬜ (Pi 필요) |
-
-**지금 동작하는 것** — 로그인/세션 · SSE 실시간 상태(`/events`) · 청크 업로드(실제 파일 저장) · Range 스트리밍/썸네일 · 미디어 목록 · 플레이리스트 CRUD · 예약(겹침 409) · 재생 제어 · 설정 · USB 재스캔 · 분 단위 스케줄 틱 · 전체 SPA(목록·넷플릭스 호버·플리 편집·예약 폼·설정).
-
-**남은 것 (Phase 10 · Pi 필요)** — systemd 배포 · mpv 실시간 위치(현재 개발용 `NullMpv`, Pi에서 `MpvIpc`로 교체) · USB 마운트 감지 · 실기기 통합 E2E.
 
 ---
 
