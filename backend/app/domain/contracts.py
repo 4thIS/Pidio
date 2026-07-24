@@ -34,6 +34,7 @@ class PlayerState:
     source_label: Optional[str]     # 예 "졸업식 플리 (3/12)" 또는 "전체 선택"
     position_sec: float
     duration_sec: float
+    current_id: Optional[str] = None   # 현재 항목 content_id(썸네일용)
 
 
 class MpvClient(Protocol):

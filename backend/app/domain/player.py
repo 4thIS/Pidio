@@ -12,7 +12,7 @@ from .contracts import PlayerState
 
 
 class Player:
-    def __init__(self, video, music, standby_image, music_screen_image, on_state_change=None, resolve_path=None):
+    def __init__(self, video, music, standby_image, music_screen_image, on_state_change=None, resolve_path=None, resolve_title=None):
         self.v = video
         self.m = music
         self.standby_image = standby_image
@@ -30,6 +30,7 @@ class Player:
         self._photo_idx = 0
         self.on_state_change = on_state_change   # 상태 변경 콜백(SSE 방송용)
         self._resolve = resolve_path or (lambda cid: cid)  # content_id → 실제 파일 경로
+        self._resolve_title = resolve_title or (lambda cid: cid)  # content_id → 표시 제목
         self.v.on_end_file(lambda reason: self._on_end(reason))
 
     # ---- 재생 시작/이동 ----
@@ -126,14 +127,15 @@ class Player:
     # ---- 상태 ----
     def get_state(self) -> PlayerState:
         b = self._current_block()
-        title = None
+        cid = None
         if b:
             if b.kind == "video":
-                title = b.video_id
+                cid = b.video_id
             elif b.photos:
-                title = b.photos[self._photo_idx][0]
+                cid = b.photos[self._photo_idx][0]
             else:
-                title = "음악"
+                cid = b.music_id
+        title = self._resolve_title(cid) if cid else None
         return PlayerState(
             status=self.status,
             mode=self.mode,
@@ -142,6 +144,7 @@ class Player:
             queue_len=len(self.queue),
             current_index=self.pos,
             current_title=title,
+            current_id=cid,
             source_label=self.source_label,
             position_sec=self.position_sec,
             duration_sec=self.duration_sec,

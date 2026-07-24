@@ -34,6 +34,11 @@ function commit() {
   if (t && t !== props.item.title) emit('save-title', props.item.content_id, t)
 }
 
+const thumbFailed = ref(false)
+const thumbSrc = computed(() =>
+  props.item.thumb_url && !thumbFailed.value ? props.item.thumb_url : null,
+)
+
 const durText = computed(() =>
   props.item.media_type === 'photo' ? '' : formatTime(props.item.duration),
 )
@@ -58,7 +63,8 @@ const durText = computed(() =>
 
       <HoverPreview v-if="expanded" :item="item" />
       <template v-else>
-        <span class="emoji">{{ typeEmoji(item.media_type) }}</span>
+        <img v-if="thumbSrc" class="thumbimg" :src="thumbSrc" alt="" @error="thumbFailed = true" />
+        <span v-else class="emoji">{{ typeEmoji(item.media_type) }}</span>
         <span v-if="durText" class="dur">{{ durText }}</span>
       </template>
     </div>
@@ -112,6 +118,7 @@ const durText = computed(() =>
   display: grid;
   place-items: center;
 }
+.thumbimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .emoji { font-size: 22px; }
 .chk {
   position: absolute;

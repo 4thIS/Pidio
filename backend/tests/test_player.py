@@ -391,3 +391,13 @@ def test_end_file_eof_advances():
                    Block(kind="video", video_id="/v/b.mp4")], "s")
     v.fire_end_file(reason="eof")
     assert v.loaded == "/v/b.mp4"        # 자연 종료 → 다음
+
+
+def test_get_state_resolves_title_and_current_id():
+    v, m = FakeMpv(), FakeMpv()
+    p = Player(v, m, "/s.png", "/mu.png",
+               resolve_title=lambda cid: {"vid1": "졸업식.mp4"}.get(cid, cid))
+    p.play_blocks([Block(kind="video", video_id="vid1")], "s")
+    st = p.get_state()
+    assert st.current_id == "vid1"          # content_id 원본
+    assert st.current_title == "졸업식.mp4"   # 파일명으로 변환

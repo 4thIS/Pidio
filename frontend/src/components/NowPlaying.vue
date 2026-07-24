@@ -21,6 +21,17 @@ const pct = computed(() => progressPercent(pos.value, dur.value))
 const repeat = computed(() => p.value?.repeat ?? 'off')
 const shuffle = computed(() => p.value?.shuffle ?? false)
 const isManual = computed(() => p.value?.mode === 'manual')
+const currentId = computed(() => p.value?.current_id || null)
+const failedIds = ref(new Set())
+const thumbUrl = computed(() => {
+  const id = currentId.value
+  if (isStandby.value || !id || failedIds.value.has(id)) return null
+  return `/thumb/${id}`
+})
+function onImgError() {
+  const id = currentId.value
+  if (id) failedIds.value = new Set(failedIds.value).add(id)
+}
 
 const notice = ref('')
 async function run(fn) {
@@ -46,7 +57,10 @@ const toggleShuffle = () => run(() => playerApi.shuffle(!shuffle.value))
 
 <template>
   <section class="now" :class="{ standby: isStandby }">
-    <div class="th">{{ isStandby ? '🖥️' : '🎬' }}</div>
+    <div class="th">
+      <img v-if="thumbUrl" :key="currentId" :src="thumbUrl" alt="" @error="onImgError" />
+      <span v-else>{{ isStandby ? '🖥️' : '🎬' }}</span>
+    </div>
 
     <div class="meta">
       <div class="t">{{ title }}</div>
@@ -99,6 +113,12 @@ const toggleShuffle = () => run(() => playerApi.shuffle(!shuffle.value))
   display: grid;
   place-items: center;
   font-size: 26px;
+  overflow: hidden;
+}
+.th img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .now.standby .th {
   background: #212a31;

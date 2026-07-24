@@ -10,9 +10,35 @@ from __future__ import annotations
 import asyncio
 import os
 
-from app.domain import scanner
+from pathlib import Path
+
+from app.domain import media_repo, scanner
+from app.web import media_tools
 
 _TICK_SECONDS = 60
+
+
+def process_added(deps, added_ids) -> None:
+    """스캔으로 새로 발견된 파일에 길이/썸네일 생성(업로드 안 거친 USB 파일용)."""
+    if not added_ids:
+        return
+    thumb_dir = Path(deps.media_root) / ".pidio" / "thumbs"
+    thumb_dir.mkdir(parents=True, exist_ok=True)
+    for cid in added_ids:
+        m = media_repo.get_media(deps.db, cid)
+        if not m or not m["rel_path"]:
+            continue
+        import os as _os
+        path = _os.path.join(deps.media_root, m["rel_path"])
+        if m["media_type"] in ("video", "music"):
+            dur = media_tools.probe_duration(path)
+            if dur is not None:
+                media_repo.upsert_media(deps.db, cid, m["media_type"],
+                                        m["original_name"], m["rel_path"], duration=dur)
+        if m["media_type"] in ("video", "photo"):
+            thumb = thumb_dir / f"{cid}.jpg"
+            if not thumb.exists():
+                media_tools.make_thumbnail(path, str(thumb))
 
 
 def startup_scan(deps) -> int:
@@ -23,7 +49,9 @@ def startup_scan(deps) -> int:
     """
     if not os.path.isdir(deps.media_root):
         return 0
-    return scanner.scan_library(deps.db, deps.media_root)["seen"]
+    result = scanner.scan_library(deps.db, deps.media_root)
+    process_added(deps, result["added"])
+    return result["seen"]
 
 
 def tick(deps, hub, now=None) -> None:
@@ -36,7 +64,8 @@ def maybe_rescan(deps, was_mounted: bool) -> bool:
     """USB 미마운트→마운트 전환 시 재스캔. 현재 마운트 여부 반환."""
     mounted = os.path.isdir(deps.media_root)
     if mounted and not was_mounted:
-        scanner.scan_library(deps.db, deps.media_root)
+        result = scanner.scan_library(deps.db, deps.media_root)
+        process_added(deps, result["added"])
     return mounted
 
 
