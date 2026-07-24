@@ -22,9 +22,11 @@ class Player:
         self.pos = -1          # order 상의 위치
         self.repeat = "off"
         self.shuffle = False
-        self.mode = "manual"
+        self.mode = "auto"       # 부팅 시 스케줄러가 평가하도록(수동 재생 시 manual로 전환)
         self.status = "standby"
         self.source_label = None
+        self.position_sec = 0.0
+        self.duration_sec = 0.0
         self._photo_idx = 0
         self.on_state_change = on_state_change   # 상태 변경 콜백(SSE 방송용)
         self._resolve = resolve_path or (lambda cid: cid)  # content_id → 실제 파일 경로
@@ -141,8 +143,8 @@ class Player:
             current_index=self.pos,
             current_title=title,
             source_label=self.source_label,
-            position_sec=0.0,   # 실시간 값은 Phase 10.2에서 mpv time-pos로 채움
-            duration_sec=0.0,
+            position_sec=self.position_sec,
+            duration_sec=self.duration_sec,
         )
 
     # ---- 내부 ----
@@ -177,6 +179,8 @@ class Player:
             return
         self.status = "playing"
         self._photo_idx = 0
+        self.position_sec = 0.0
+        self.duration_sec = 0.0
         if b.kind == "video":
             self.m.stop()
             extra = {"loop-file": "inf"} if self.repeat == "one" else None
@@ -198,6 +202,13 @@ class Player:
         self.status = "standby"
         self.v.loadfile(self.standby_image, {"image-display-duration": "inf"})
         self.m.stop()
+
+    def refresh_position(self):
+        """현재 재생 위치/길이를 화면 mpv에서 읽어 캐시(진행바용). 이미지/유휴면 0."""
+        pos = self.v.get_property("time-pos")
+        dur = self.v.get_property("duration")
+        self.position_sec = float(pos) if pos is not None else 0.0
+        self.duration_sec = float(dur) if dur is not None else 0.0
 
     def _notify(self):
         """상태 변경을 외부(웹 SSE)에 알린다. 미설정이면 무시."""

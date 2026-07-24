@@ -50,3 +50,21 @@ async def run_loop(deps, hub, interval: int = _TICK_SECONDS) -> None:
             await asyncio.sleep(interval)
     except asyncio.CancelledError:
         pass
+
+
+def position_tick(deps, hub) -> None:
+    """재생 중이면 time-pos/duration 갱신 후 상태 방송(진행바)."""
+    if deps.player.status == "playing":
+        deps.player.refresh_position()
+        hub.publish(deps.player.get_state())
+
+
+async def run_position_loop(deps, hub, interval: float = 1.0) -> None:
+    """1초 주기로 진행바 갱신 방송. mpv get_property는 블로킹이라 executor로."""
+    loop = asyncio.get_event_loop()
+    try:
+        while True:
+            await asyncio.sleep(interval)
+            await loop.run_in_executor(None, position_tick, deps, hub)
+    except asyncio.CancelledError:
+        pass

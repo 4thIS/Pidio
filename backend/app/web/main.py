@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.web.deps import Deps
 from app.web import auth
-from app.web.background import run_loop, startup_scan
+from app.web.background import run_loop, run_position_loop, startup_scan
 from app.web.sse import StateHub, router as sse_router
 from app.web.upload import router as upload_router
 from app.web.streaming import router as streaming_router
@@ -34,10 +34,12 @@ async def _lifespan(app: FastAPI):
     startup_scan(app.state.deps)
     # 분 단위 스케줄 틱 루프 기동(운영 시에만).
     task = asyncio.create_task(run_loop(app.state.deps, app.state.hub))
+    task_pos = asyncio.create_task(run_position_loop(app.state.deps, app.state.hub))
     try:
         yield
     finally:
         task.cancel()
+        task_pos.cancel()
 
 
 def create_app(testing: bool = False) -> FastAPI:

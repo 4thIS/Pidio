@@ -11,6 +11,7 @@ class FakeMpv:
         self.loaded = None    # 마지막 loadfile 경로(stop 시 None)
         self.props = {}        # set_property 로 설정된 속성
         self._end = None       # on_end_file 콜백
+        self.properties = {}   # get_property 반환용(테스트)
 
     def loadfile(self, path, extra=None):
         self.loaded = path
@@ -32,6 +33,9 @@ class FakeMpv:
 
     def on_end_file(self, callback):
         self._end = callback
+
+    def get_property(self, name, timeout=1.0):
+        return self.properties.get(name)
 
     def fire_end_file(self, reason="eof"):
         """mpv '재생 끝' 이벤트를 흉내낸다."""
