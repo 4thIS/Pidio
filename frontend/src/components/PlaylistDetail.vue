@@ -1,7 +1,7 @@
 <script setup>
-// D-4 플레이리스트 상세 — 헤더 + 음악 라인 편집기 + 저장(PUT).
+// 플레이리스트 상세 — 화면 위 모달 박스. 내용은 가로 썸네일 카드(재생목록 패널과 동일 톤).
+// 편집(추가/삭제/순서변경/옵션)은 즉시 저장. 새로 만든 뒤 빈 채로 닫으면 자동 삭제.
 import { ref, computed, onMounted } from 'vue'
-import MusicLane from './MusicLane.vue'
 import ScheduleModal from './ScheduleModal.vue'
 import { scheduleSummary } from '../schedule.js'
 import { playlists as plApi, media as mediaApi } from '../api.js'
@@ -10,8 +10,8 @@ import { normalizeBlocks, serializeBlocks, newSlideshow, newVideo, newPhoto } fr
 import { typeEmoji, thumbGradient } from '../mediaView.js'
 import { formatTime } from '../format.js'
 
-const props = defineProps({ id: [Number, String] })
-const emit = defineEmits(['close'])
+const props = defineProps({ id: [Number, String], justCreated: Boolean })
+const emit = defineEmits(['close', 'changed'])
 
 const pl = ref(null)
 const blocks = ref([])
@@ -19,15 +19,13 @@ const allMedia = ref([])
 const mediaMap = ref({})
 const usingMock = ref(false)
 const loading = ref(true)
-const saving = ref(false)
 const notice = ref('')
-const picker = ref(null) // { kind:'video'|'music'|'photo', block? }
+const editingName = ref(false)
+const nameDraft = ref('')
 
 onMounted(load)
 async function load() {
   loading.value = true
-  // 미디어(제목/피커용). 서버가 정상 응답하면 빈 목록이라도 그대로 사용
-  // (가짜 미디어를 쓰면 저장 시 존재하지 않는 id 참조로 실패하므로 catch 에서만 폴백).
   let list
   try {
     const data = await mediaApi.list('all')
@@ -37,7 +35,6 @@ async function load() {
   }
   allMedia.value = list
   mediaMap.value = Object.fromEntries(list.map((m) => [m.content_id, m]))
-  // 상세
   let d
   try {
     d = await plApi.get(props.id)
@@ -52,13 +49,69 @@ async function load() {
   loading.value = false
 }
 
+// ---- 블록 → 표시(썸네일/제목) ----
+function bcid(b) {
+  return b.kind === 'video' ? b.video_id : (b.photos && b.photos.length ? b.photos[0].photo_id : b.music_id)
+}
+function btitle(b) {
+  const m = mediaMap.value[bcid(b)]
+  return m ? m.title : (bcid(b) || '(빈 항목)')
+}
+function bthumb(b) {
+  const m = mediaMap.value[bcid(b)]
+  return m && m.thumb_url ? m.thumb_url : null
+}
+function bemoji(b) {
+  if (b.kind === 'video') return '🎬'
+  return b.photos && b.photos.length ? '🖼' : '🎵'
+}
+function bdur(b) {
+  const m = mediaMap.value[bcid(b)]
+  return m && m.media_type !== 'photo' ? formatTime(m.duration) : ''
+}
+function coverStyle(cid) {
+  return { backgroundImage: `url(/thumb/${cid})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: '#1a2129' }
+}
+
+// ---- 저장(모든 편집은 즉시 반영) ----
+let saved = false
+async function persist() {
+  try {
+    await plApi.save(props.id, {
+      name: pl.value.name,
+      repeat_mode: pl.value.repeat_mode,
+      shuffle: pl.value.shuffle,
+      blocks: serializeBlocks(blocks.value),
+    })
+    saved = true
+  } catch (e) {
+    if (usingMock.value) notify('저장됨(서버 미연결 · 화면만 반영).')
+    else notify(e?.message || '저장에 실패했습니다.')
+  }
+}
+
 // ---- 헤더 컨트롤 ----
+function startEditName() {
+  nameDraft.value = pl.value.name
+  editingName.value = true
+}
+function commitName() {
+  if (!editingName.value) return
+  editingName.value = false
+  const t = nameDraft.value.trim()
+  if (t && t !== pl.value.name) {
+    pl.value.name = t
+    persist()
+  }
+}
 function cycleRepeat() {
   const order = { off: 'all', all: 'one', one: 'off' }
   pl.value.repeat_mode = order[pl.value.repeat_mode]
+  persist()
 }
 function toggleShuffle() {
   pl.value.shuffle = !pl.value.shuffle
+  persist()
 }
 async function playNow() {
   try {
@@ -70,149 +123,188 @@ async function playNow() {
 }
 
 const scheduleText = computed(() => scheduleSummary(pl.value?.schedule))
-
-// ---- 예약 모달 ----
 const schedOpen = ref(false)
-function onSchedSaved(sched, opts) {
+function onSchedSaved(sched) {
   pl.value.schedule = sched
   schedOpen.value = false
-  notify(opts?.offline ? '예약 저장됨(서버 미연결 · 화면만 반영).' : '예약을 저장했습니다.')
+  notify('예약을 저장했습니다.')
 }
-function onSchedRemoved(opts) {
+function onSchedRemoved() {
   pl.value.schedule = null
   schedOpen.value = false
-  notify(opts?.offline ? '예약 삭제됨(서버 미연결 · 화면만 반영).' : '예약을 삭제했습니다.')
+  notify('예약을 삭제했습니다.')
 }
 
-// ---- 편집 ----
-function addMusicLane() {
-  blocks.value.push(newSlideshow(null))
+// ---- 항목 추가(피커) ----
+const picker = ref(false)
+function blockFromMedia(cid) {
+  const m = mediaMap.value[cid]
+  if (!m) return null
+  if (m.media_type === 'video') return newVideo(cid)
+  if (m.media_type === 'photo') {
+    const b = newSlideshow(null)
+    b.photos.push(newPhoto(cid))
+    return b
+  }
+  return newSlideshow(cid) // music → 음악 라인
 }
-function removeBlock(block) {
-  blocks.value = blocks.value.filter((b) => b !== block)
-}
-function openPicker(kind, block = null) {
-  picker.value = { kind, block }
-}
-const pickerItems = computed(() => {
-  if (!picker.value) return []
-  const t = picker.value.kind === 'music' ? 'music' : picker.value.kind === 'video' ? 'video' : 'photo'
-  return allMedia.value.filter((m) => m.media_type === t)
-})
-function choose(id) {
-  const p = picker.value
-  if (p.kind === 'video') blocks.value.push(newVideo(id))
-  else if (p.kind === 'music') p.block.music_id = id
-  else if (p.kind === 'photo') p.block.photos.push(newPhoto(id))
-  picker.value = null
+function choose(cid) {
+  const b = blockFromMedia(cid)
+  if (b) {
+    blocks.value.push(b)
+    persist()
+  }
+  picker.value = false
 }
 
-// ---- 저장 ----
-async function save() {
-  saving.value = true
-  const payload = {
-    name: pl.value.name,
-    repeat_mode: pl.value.repeat_mode,
-    shuffle: pl.value.shuffle,
-    blocks: serializeBlocks(blocks.value),
+// ---- 항목 삭제 ----
+function removeBlock(i) {
+  blocks.value.splice(i, 1)
+  persist()
+}
+
+// ---- 드래그로 순서변경 ----
+const dragIndex = ref(null)
+const overIndex = ref(null)
+function isBlockDrag(e) {
+  return [...(e.dataTransfer?.types || [])].includes('application/x-pidio-plblock')
+}
+function onCardDragStart(i, e) {
+  dragIndex.value = i
+  e.dataTransfer.setData('application/x-pidio-plblock', String(i))
+  e.dataTransfer.effectAllowed = 'move'
+}
+function onCardDragOver(i, e) {
+  if (!isBlockDrag(e)) return
+  e.preventDefault()
+  overIndex.value = i
+}
+function onCardDrop(i, e) {
+  if (!isBlockDrag(e)) return
+  e.preventDefault()
+  const from = dragIndex.value
+  dragIndex.value = null
+  overIndex.value = null
+  if (from === null || from === i) return
+  const [moved] = blocks.value.splice(from, 1)
+  blocks.value.splice(i, 0, moved)
+  persist()
+}
+function onCardDragEnd() {
+  dragIndex.value = null
+  overIndex.value = null
+}
+
+// ---- 닫기(빈 새 목록이면 삭제) ----
+async function close() {
+  if (props.justCreated && blocks.value.length === 0 && !saved) {
+    try {
+      await plApi.remove(props.id)
+    } catch {
+      /* ignore */
+    }
   }
-  try {
-    await plApi.save(props.id, payload)
-    notify('저장했습니다.')
-  } catch (e) {
-    if (usingMock.value) notify('저장됨(서버 미연결 · 화면만 반영).')
-    else notify(e?.message || '저장에 실패했습니다.')  // 서버의 사유(예: 없는 미디어 참조) 노출
-  } finally {
-    saving.value = false
-  }
+  emit('changed')
+  emit('close')
 }
 
 let nt = null
 function notify(msg) {
   notice.value = msg
   clearTimeout(nt)
-  nt = setTimeout(() => (notice.value = ''), 2800)
+  nt = setTimeout(() => (notice.value = ''), 2600)
 }
 </script>
 
 <template>
-  <div class="detail">
-    <div class="dbar">
-      <button class="back" @click="emit('close')">← 목록</button>
-      <div class="grow"></div>
-      <span v-if="notice" class="notice">{{ notice }}</span>
-      <button class="save" :disabled="saving" @click="save">{{ saving ? '저장 중…' : '💾 저장' }}</button>
-    </div>
-
-    <div v-if="loading" class="empty">불러오는 중…</div>
-
-    <template v-else>
-      <div class="dhead">
-        <span class="dt">{{ pl.name }}</span>
-        <button class="btn acc" @click="playNow">▶ 재생</button>
-        <button class="opt" :class="{ on: pl.repeat_mode !== 'off' }" @click="cycleRepeat">
-          {{ pl.repeat_mode === 'one' ? '🔂 한개반복' : pl.repeat_mode === 'all' ? '🔁 전체반복' : '🔁 반복꺼짐' }}
-        </button>
-        <button class="opt" :class="{ on: pl.shuffle }" @click="toggleShuffle">🔀 셔플</button>
-        <div class="grow"></div>
-        <button class="opt" :class="{ on: pl.schedule }" @click="schedOpen = true">
-          🕒 {{ pl.schedule ? '예약됨' : '예약' }}
-        </button>
-      </div>
-
-      <div v-if="scheduleText" class="banner">
-        🕒 <b>{{ scheduleText }}</b> 자동 재생
-        <button class="edit-sched" @click="schedOpen = true">✏ 예약 수정</button>
-      </div>
-      <p v-if="usingMock" class="mock">샘플 데이터 · 서버 미연결</p>
-
-      <div class="lanes">
-        <MusicLane
-          v-for="b in blocks"
-          :key="b._key"
-          :block="b"
-          :media-map="mediaMap"
-          @pick-music="openPicker('music', $event)"
-          @add-photo="openPicker('photo', $event)"
-          @remove="removeBlock"
-        />
-        <div v-if="!blocks.length" class="empty">라인이 없습니다. 아래에서 추가하세요.</div>
-      </div>
-
-      <div class="addrow">
-        <button class="addbtn" @click="addMusicLane">＋ 음악 라인 추가</button>
-        <button class="addbtn" @click="openPicker('video')">＋ 동영상 추가</button>
-      </div>
-      <p class="hint">사진의 ⠿ 를 잡아 다른 음악 라인으로 끌어다 놓으면 배경음악이 바뀌어요.</p>
-    </template>
-
-    <!-- 예약 모달 -->
-    <ScheduleModal
-      v-if="schedOpen"
-      :playlist-id="id"
-      :model-value="pl.schedule"
-      @saved="onSchedSaved"
-      @removed="onSchedRemoved"
-      @close="schedOpen = false"
-    />
-
-    <!-- 미디어 피커 -->
-    <div v-if="picker" class="picker-ov" @click.self="picker = null">
-      <div class="picker">
-        <div class="ph-head">
-          <b>{{ picker.kind === 'video' ? '동영상' : picker.kind === 'music' ? '배경음악' : '사진' }} 선택</b>
-          <button class="x" @click="picker = null">✕</button>
+  <div class="pd-ov" @click.self="close">
+    <div class="sheet">
+      <div class="dbar">
+        <div v-if="editingName" class="nmwrap">
+          <input v-model="nameDraft" class="nmedit" @keyup.enter="commitName" @blur="commitName" @keyup.esc="editingName = false" />
         </div>
-        <div class="ph-list">
-          <button v-if="picker.kind === 'music'" class="pick none" @click="picker.block.music_id = null; picker = null">
-            🔇 음악 없음
+        <div v-else class="nmwrap" @dblclick="startEditName">
+          <span class="dt">{{ pl?.name }}</span>
+          <button class="pen" @click="startEditName" aria-label="이름 수정">✎</button>
+        </div>
+        <div class="grow"></div>
+        <span v-if="notice" class="notice">{{ notice }}</span>
+        <button class="x" @click="close" aria-label="닫기">✕</button>
+      </div>
+
+      <div v-if="loading" class="empty">불러오는 중…</div>
+
+      <template v-else>
+        <div class="ctrls">
+          <button class="btn acc" @click="playNow">▶ 재생</button>
+          <button class="opt" :class="{ on: pl.repeat_mode !== 'off' }" @click="cycleRepeat">
+            {{ pl.repeat_mode === 'one' ? '🔂 한개반복' : pl.repeat_mode === 'all' ? '🔁 전체반복' : '🔁 반복꺼짐' }}
           </button>
-          <button v-for="m in pickerItems" :key="m.content_id" class="pick" @click="choose(m.content_id)">
-            <span class="pt" :style="{ background: thumbGradient(m) }">{{ typeEmoji(m.media_type) }}</span>
-            <span class="pn">{{ m.title }}</span>
-            <span v-if="m.media_type !== 'photo'" class="pd">{{ formatTime(m.duration) }}</span>
+          <button class="opt" :class="{ on: pl.shuffle }" @click="toggleShuffle">🔀 셔플</button>
+          <div class="grow"></div>
+          <button class="opt" :class="{ on: pl.schedule }" @click="schedOpen = true">
+            🕒 {{ pl.schedule ? '예약됨' : '예약' }}
           </button>
-          <div v-if="!pickerItems.length" class="empty">해당 유형의 미디어가 없습니다.</div>
+        </div>
+
+        <div v-if="scheduleText" class="banner">🕒 <b>{{ scheduleText }}</b> 자동 재생</div>
+        <p v-if="usingMock" class="mock">샘플 데이터 · 서버 미연결</p>
+
+        <div class="strip">
+          <div
+            v-for="(b, i) in blocks"
+            :key="b._key"
+            class="qc"
+            :class="{ over: overIndex === i, dragging: dragIndex === i }"
+            draggable="true"
+            @dragstart="onCardDragStart(i, $event)"
+            @dragover="onCardDragOver(i, $event)"
+            @drop="onCardDrop(i, $event)"
+            @dragend="onCardDragEnd"
+            :title="btitle(b)"
+          >
+            <div class="th" :style="bthumb(b) ? coverStyle(bcid(b)) : {}">
+              <span v-if="!bthumb(b)" class="emoji">{{ bemoji(b) }}</span>
+              <span v-if="bdur(b)" class="dur">{{ bdur(b) }}</span>
+              <button class="rm" @click.stop="removeBlock(i)" title="삭제">🗑</button>
+            </div>
+            <div class="t">{{ btitle(b) }}</div>
+          </div>
+
+          <button class="addcard" @click="picker = true" title="항목 추가">
+            <span class="plus">＋</span><span class="al">추가</span>
+          </button>
+        </div>
+        <div v-if="!blocks.length" class="hint">＋ 로 동영상·사진·음악을 담아 목록을 만드세요.</div>
+      </template>
+
+      <!-- 예약 모달 -->
+      <ScheduleModal
+        v-if="schedOpen"
+        :playlist-id="id"
+        :model-value="pl.schedule"
+        @saved="onSchedSaved"
+        @removed="onSchedRemoved"
+        @close="schedOpen = false"
+      />
+
+      <!-- 항목 피커 -->
+      <div v-if="picker" class="picker-ov" @click.self="picker = false">
+        <div class="picker">
+          <div class="ph-head">
+            <b>항목 추가</b>
+            <button class="x2" @click="picker = false">✕</button>
+          </div>
+          <div class="ph-list">
+            <button v-for="m in allMedia" :key="m.content_id" class="pick" @click="choose(m.content_id)">
+              <span class="pt" :style="m.thumb_url ? coverStyle(m.content_id) : { background: thumbGradient(m) }">
+                <span v-if="!m.thumb_url">{{ typeEmoji(m.media_type) }}</span>
+              </span>
+              <span class="pn">{{ m.title }}</span>
+              <span v-if="m.media_type !== 'photo'" class="pd">{{ formatTime(m.duration) }}</span>
+            </button>
+            <div v-if="!allMedia.length" class="empty">담을 미디어가 없습니다.</div>
+          </div>
         </div>
       </div>
     </div>
@@ -220,150 +312,145 @@ function notify(msg) {
 </template>
 
 <style scoped>
-.detail { min-height: 100%; }
+/* 열림 애니메이션 (App 의 <Transition name="modal">) */
+.modal-enter-active, .modal-leave-active { transition: opacity 0.18s ease; }
+.modal-enter-active .sheet, .modal-leave-active .sheet { transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
+.modal-enter-from .sheet, .modal-leave-to .sheet { transform: translateY(14px) scale(0.97); }
+
+.pd-ov {
+  position: fixed;
+  inset: 0;
+  background: rgba(6, 9, 11, 0.66);
+  backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+  z-index: 25;
+  padding: 24px;
+}
+.sheet {
+  width: 760px;
+  max-width: 100%;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--bd);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
 .dbar {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 11px 16px;
+  padding: 13px 16px;
   border-bottom: 1px solid var(--bd);
   background: #151c21;
+  border-radius: 16px 16px 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
-.back {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 7px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--bd);
-  background: var(--elev);
-  color: var(--text);
-}
+.nmwrap { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.dt { font-size: 16px; font-weight: 720; letter-spacing: -0.01em; }
+.pen { opacity: 0.55; border: none; background: transparent; color: var(--muted); font-size: 12px; }
+.nmwrap:hover .pen { opacity: 1; }
+.nmedit { background: var(--bg); border: 1px solid var(--teal); border-radius: 6px; color: var(--text); font-size: 15px; font-weight: 700; padding: 4px 8px; }
 .grow { flex: 1; }
 .notice { font-size: 11.5px; color: var(--teal); }
-.save {
-  font-size: 12px;
-  font-weight: 640;
-  padding: 8px 15px;
-  border-radius: 8px;
-  border: none;
-  background: var(--accent);
-  color: #fff;
-}
-.save:disabled { opacity: 0.6; }
-.dhead {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 14px 16px;
-  flex-wrap: wrap;
-}
-.dt { font-size: 17px; font-weight: 720; letter-spacing: -0.01em; }
-.btn {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 7px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--bd);
-  background: var(--elev);
-  color: var(--text);
-}
+.x { border: none; background: var(--elev); color: var(--muted); font-size: 13px; width: 30px; height: 30px; border-radius: 8px; }
+.ctrls { display: flex; align-items: center; gap: 9px; padding: 13px 16px 4px; flex-wrap: wrap; }
+.btn { font-size: 12px; font-weight: 600; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--bd); background: var(--elev); color: var(--text); }
 .btn.acc { background: var(--accent); border-color: var(--accent); color: #fff; }
-.opt {
-  font-size: 11.5px;
-  font-weight: 600;
-  padding: 6px 11px;
-  border-radius: 8px;
-  border: 1px solid var(--bd);
-  background: var(--elev);
-  color: var(--muted);
-}
+.opt { font-size: 11.5px; font-weight: 600; padding: 6px 11px; border-radius: 8px; border: 1px solid var(--bd); background: var(--elev); color: var(--muted); }
 .opt.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
-.banner {
-  margin: 0 16px;
-  padding: 9px 13px;
-  border-radius: 9px;
-  font-size: 11.5px;
-  background: color-mix(in srgb, var(--teal) 13%, transparent);
-  border: 1px solid color-mix(in srgb, var(--teal) 40%, transparent);
-}
+.banner { margin: 8px 16px 0; padding: 8px 12px; border-radius: 9px; font-size: 11.5px; background: color-mix(in srgb, var(--teal) 13%, transparent); border: 1px solid color-mix(in srgb, var(--teal) 40%, transparent); }
 .banner b { color: var(--teal); }
-.edit-sched {
-  margin-left: 8px;
-  font-size: 10.5px;
-  border: 1px solid color-mix(in srgb, var(--teal) 45%, transparent);
-  background: transparent;
-  color: var(--teal);
-  border-radius: 6px;
-  padding: 2px 8px;
-}
-.mock {
-  margin: 10px 16px 0;
-  font-size: 10.5px;
-  color: var(--warn);
-  font-family: var(--font-mono);
-}
-.lanes {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px 4px;
-}
-.addrow { display: flex; gap: 8px; padding: 8px 16px 4px; flex-wrap: wrap; }
-.addbtn {
-  font-size: 11.5px;
-  padding: 8px 13px;
-  border-radius: 8px;
-  border: 1px dashed var(--bd);
-  color: var(--muted);
-  background: transparent;
-}
-.hint { font-size: 11px; color: var(--faint); font-style: italic; padding: 4px 16px 20px; margin: 0; }
-.empty { color: var(--faint); font-size: 13px; padding: 18px; text-align: center; }
+.mock { margin: 8px 16px 0; font-size: 10.5px; color: var(--warn); font-family: var(--font-mono); }
 
-/* picker */
-.picker-ov {
-  position: fixed;
-  inset: 0;
-  background: rgba(8, 11, 13, 0.7);
+/* 가로 썸네일 스트립 */
+.strip {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+  padding: 14px 16px 16px;
+  overflow-x: auto;
+}
+.qc {
+  width: 132px;
+  flex: none;
+  border-radius: 10px;
+  padding: 4px;
+  border: 1px solid transparent;
+  cursor: grab;
+  position: relative;
+}
+.qc.dragging { opacity: 0.4; }
+.qc.over::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--teal);
+}
+.qc .th {
+  height: 76px;
+  border-radius: 7px;
+  background: #1a2129;
+  position: relative;
   display: grid;
   place-items: center;
-  z-index: 20;
-  padding: 20px;
-}
-.picker {
-  width: 380px;
-  max-width: 100%;
-  max-height: 70vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--sf);
-  border: 1px solid var(--bd);
-  border-radius: 13px;
   overflow: hidden;
 }
-.ph-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--bd);
+.qc .emoji { font-size: 22px; }
+.qc .dur { position: absolute; left: 5px; bottom: 5px; font-family: var(--font-mono); font-size: 9px; background: rgba(0, 0, 0, 0.6); color: #fff; padding: 1px 5px; border-radius: 4px; }
+.qc .rm {
+  position: absolute;
+  right: 5px;
+  top: 5px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
 }
-.ph-head .x { border: none; background: transparent; color: var(--faint); font-size: 14px; }
-.ph-list { overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
-.pick {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 9px;
-  border-radius: 8px;
-  border: 1px solid transparent;
+.qc:hover .rm { opacity: 1; }
+.qc .rm:hover { background: #c0392b; }
+.qc .t { font-size: 11px; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.addcard {
+  width: 88px;
+  flex: none;
+  border: 1px dashed var(--bd);
+  border-radius: 10px;
   background: transparent;
-  color: var(--text);
-  text-align: left;
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  align-content: center;
 }
+.addcard .plus { font-size: 22px; color: var(--teal); }
+.addcard .al { font-size: 11px; }
+.hint { font-size: 11.5px; color: var(--faint); font-style: italic; padding: 0 16px 18px; margin: -6px 0 0; }
+.empty { color: var(--faint); font-size: 13px; padding: 24px; text-align: center; }
+
+/* 피커 */
+.picker-ov { position: fixed; inset: 0; background: rgba(8, 11, 13, 0.7); display: grid; place-items: center; z-index: 30; padding: 20px; }
+.picker { width: 380px; max-width: 100%; max-height: 70vh; display: flex; flex-direction: column; background: var(--sf); border: 1px solid var(--bd); border-radius: 13px; overflow: hidden; }
+.ph-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--bd); }
+.ph-head .x2 { border: none; background: transparent; color: var(--faint); font-size: 14px; }
+.ph-list { overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+.pick { display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--text); text-align: left; }
 .pick:hover { background: var(--elev); border-color: var(--bd); }
-.pick .pt { width: 40px; height: 28px; border-radius: 5px; display: grid; place-items: center; font-size: 14px; flex: none; }
+.pick .pt { width: 40px; height: 28px; border-radius: 5px; display: grid; place-items: center; font-size: 14px; flex: none; overflow: hidden; }
 .pick .pn { flex: 1; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pick .pd { font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); }
-.pick.none { color: var(--muted); font-size: 12.5px; padding: 9px; }
 </style>

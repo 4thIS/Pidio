@@ -1,25 +1,38 @@
 <script setup>
-// D-3 전체 목록 — 타입 탭 · 체크박스 다중선택 · 넷플릭스 호버 미리보기.
+// D-3 전체 목록 — 타입 탭 · 폴더(수동 그룹) · 체크박스 다중선택 · 넷플릭스 호버 미리보기.
 import { ref, reactive, computed, onMounted } from 'vue'
 import MediaCard from './MediaCard.vue'
-import { media as mediaApi, play as playApi, player as playerApi, ApiError } from '../api.js'
+import { media as mediaApi, play as playApi, player as playerApi, folders as folderApi } from '../api.js'
 import { MOCK_MEDIA } from '../mock.js'
 
-const TABS = [
+const emit = defineEmits(['media-deleted'])
+
+const TYPE_TABS = [
   { k: 'all', label: '전체' },
   { k: 'video', label: '🎬 동영상' },
   { k: 'photo', label: '🖼 사진' },
   { k: 'music', label: '🎵 음악' },
 ]
-const emit = defineEmits(['media-deleted'])
-
-const tab = ref('all')
+const tab = ref('all') // 'all'|'video'|'photo'|'music'|'folder:<id>'
 const items = ref([])
+const foldersList = ref([]) // [{id,name,item_count}]
+const folderIds = ref([]) // 현재 폴더 탭의 content_id 목록
+const dragFolderId = ref(null) // 드래그 오버 중인 폴더 탭
 const usingMock = ref(false)
 const loading = ref(true)
 const selected = reactive(new Set())
 
-onMounted(load)
+const activeFolder = computed(() =>
+  tab.value.startsWith('folder:') ? Number(tab.value.slice(7)) : null,
+)
+const activeFolderObj = computed(() =>
+  foldersList.value.find((f) => f.id === activeFolder.value) || null,
+)
+
+onMounted(async () => {
+  await Promise.all([load(), loadFolders()])
+})
+
 async function load() {
   loading.value = true
   try {
@@ -27,16 +40,40 @@ async function load() {
     items.value = Array.isArray(data) ? data : []
     usingMock.value = false
   } catch {
-    items.value = MOCK_MEDIA // 서버 미연결 시 샘플로 폴백
+    items.value = MOCK_MEDIA
     usingMock.value = true
   } finally {
     loading.value = false
   }
 }
+async function loadFolders() {
+  try {
+    foldersList.value = await folderApi.list()
+  } catch {
+    foldersList.value = []
+  }
+}
 
-const filtered = computed(() =>
-  tab.value === 'all' ? items.value : items.value.filter((m) => m.media_type === tab.value),
-)
+async function selectTab(k) {
+  tab.value = k
+  selected.clear()
+  if (k.startsWith('folder:')) {
+    try {
+      const f = await folderApi.get(Number(k.slice(7)))
+      folderIds.value = f.content_ids
+    } catch {
+      folderIds.value = []
+    }
+  }
+}
+
+const filtered = computed(() => {
+  if (activeFolder.value !== null) {
+    const set = new Set(folderIds.value)
+    return items.value.filter((m) => set.has(m.content_id))
+  }
+  return tab.value === 'all' ? items.value : items.value.filter((m) => m.media_type === tab.value)
+})
 
 function toggle(id) {
   selected.has(id) ? selected.delete(id) : selected.add(id)
@@ -51,7 +88,7 @@ async function saveTitle(id, title) {
     await mediaApi.patchTitle(id, title)
     if (it) it.title = title
   } catch {
-    if (it) it.title = title // 낙관적 갱신(샘플/오프라인)
+    if (it) it.title = title
     if (!usingMock.value) notify('제목 저장에 실패했습니다.')
   }
 }
@@ -72,20 +109,95 @@ async function addToQueue(id) {
     notify('추가하지 못했습니다.')
   }
 }
+
+// 카드 🗑 — 폴더 탭에선 폴더에서 제거(파일 유지), 타입 탭에선 실제 파일 삭제
 async function deleteMedia(id) {
+  if (activeFolder.value !== null) {
+    const f = activeFolderObj.value
+    if (!confirm(`"${f?.name}" 폴더에서 이 파일을 뺄까요? (파일 자체는 유지)`)) return
+    try {
+      await folderApi.removeItem(activeFolder.value, id)
+      folderIds.value = folderIds.value.filter((c) => c !== id)
+      await loadFolders()
+      notify('폴더에서 제거했습니다.')
+    } catch {
+      notify('제거하지 못했습니다.')
+    }
+    return
+  }
   if (!confirm('이 파일을 삭제할까요? (USB에서 제거됩니다)')) return
   try {
     await mediaApi.remove(id)
     items.value = items.value.filter((m) => m.content_id !== id)
     selected.delete(id)
-    emit('media-deleted', id) // 플레이리스트 목록도 갱신하도록 상위에 통지
+    await loadFolders() // 폴더 카운트 갱신
+    emit('media-deleted', id)
     notify('삭제했습니다.')
   } catch {
     notify('삭제하지 못했습니다.')
   }
 }
+
+// ---- 폴더 생성 ----
+async function createFolder() {
+  const name = (prompt('새 폴더 이름', '새 폴더') || '').trim()
+  if (!name) return
+  try {
+    const r = await folderApi.create(name)
+    await loadFolders()
+    if (r?.id) await selectTab('folder:' + r.id)
+  } catch {
+    notify('폴더를 만들지 못했습니다.')
+  }
+}
+
+// ---- 드래그로 폴더에 추가 ----
+function onFolderDragOver(e, f) {
+  if ([...(e.dataTransfer?.types || [])].includes('application/x-pidio-media')) {
+    e.preventDefault()
+    dragFolderId.value = f.id
+  }
+}
+function onFolderDrop(e, f) {
+  dragFolderId.value = null
+  const media = e.dataTransfer.getData('application/x-pidio-media')
+  if (!media) return
+  e.preventDefault()
+  const { content_id } = JSON.parse(media)
+  folderApi
+    .addItems(f.id, [content_id])
+    .then(async () => {
+      await loadFolders()
+      if (activeFolder.value === f.id) await selectTab('folder:' + f.id) // 현재 보고 있으면 갱신
+      notify(`"${f.name}"에 추가됨.`)
+    })
+    .catch(() => notify('추가하지 못했습니다.'))
+}
+
+// ---- 폴더 삭제(폴더만 / 파일까지) ----
+const folderToDelete = ref(null)
+function askDeleteFolder(f) {
+  folderToDelete.value = f
+}
+async function doDeleteFolder(withMedia) {
+  const f = folderToDelete.value
+  folderToDelete.value = null
+  if (!f) return
+  try {
+    await folderApi.remove(f.id, withMedia)
+    if (withMedia) {
+      await load()
+      emit('media-deleted')
+    }
+    await loadFolders()
+    if (activeFolder.value === f.id) tab.value = 'all'
+    notify(withMedia ? '폴더와 파일을 삭제했습니다.' : '폴더를 삭제했습니다.')
+  } catch {
+    notify('폴더 삭제에 실패했습니다.')
+  }
+}
+
 function todo(what) {
-  // 큐 추가·목록 저장은 아직 미구현 기능(엔드포인트 없음).
   notify(`${what} 기능은 준비 중입니다.`)
 }
 
@@ -108,15 +220,34 @@ function notify(msg) {
 
     <div class="tabs">
       <button
-        v-for="t in TABS"
+        v-for="t in TYPE_TABS"
         :key="t.k"
         class="tab"
         :class="{ on: tab === t.k }"
-        @click="tab = t.k"
+        @click="selectTab(t.k)"
       >
         {{ t.label }}
       </button>
+      <button class="tab addf" @click="createFolder" title="새 폴더 만들기">＋ 폴더</button>
+
+      <button
+        v-for="f in foldersList"
+        :key="'f' + f.id"
+        class="tab folder"
+        :class="{ on: activeFolder === f.id, drop: dragFolderId === f.id }"
+        @click="selectTab('folder:' + f.id)"
+        @dragover="onFolderDragOver($event, f)"
+        @dragleave="dragFolderId = null"
+        @drop="onFolderDrop($event, f)"
+      >
+        📁 {{ f.name }} <span class="fc">{{ f.item_count }}</span>
+        <span class="fx" @click.stop="askDeleteFolder(f)" title="폴더 삭제">✕</span>
+      </button>
     </div>
+
+    <p v-if="activeFolder !== null" class="fhint">
+      전체·동영상·사진·음악 탭에서 파일을 이 폴더 탭 위로 드래그하면 담깁니다.
+    </p>
 
     <div v-if="selected.size" class="selbar">
       <span class="cnt">{{ selected.size }}개 선택됨</span>
@@ -129,18 +260,35 @@ function notify(msg) {
     <p v-if="notice" class="notice">{{ notice }}</p>
 
     <div v-if="loading" class="empty">불러오는 중…</div>
-    <div v-else-if="!filtered.length" class="empty">이 유형의 미디어가 없습니다.</div>
+    <div v-else-if="!filtered.length" class="empty">
+      {{ activeFolder !== null ? '이 폴더는 비어 있습니다. 파일을 드래그해 담아보세요.' : '이 유형의 미디어가 없습니다.' }}
+    </div>
     <div v-else class="grid">
       <MediaCard
         v-for="m in filtered"
         :key="m.content_id"
         :item="m"
         :selected="selected.has(m.content_id)"
+        :delete-icon="activeFolder !== null ? '⊘' : '🗑'"
+        :delete-title="activeFolder !== null ? '폴더에서 빼기' : '삭제'"
         @toggle="toggle"
         @save-title="saveTitle"
         @add-queue="addToQueue"
         @delete="deleteMedia"
       />
+    </div>
+
+    <!-- 폴더 삭제 다이얼로그 -->
+    <div v-if="folderToDelete" class="fd-ov" @click.self="folderToDelete = null">
+      <div class="fd">
+        <div class="fd-t">"{{ folderToDelete.name }}" 폴더를 삭제할까요?</div>
+        <div class="fd-s">폴더만 삭제하면 안의 파일은 전체 목록에 그대로 남습니다.</div>
+        <div class="fd-btns">
+          <button class="fd-b ghost" @click="folderToDelete = null">취소</button>
+          <button class="fd-b" @click="doDeleteFolder(false)">폴더만 삭제</button>
+          <button class="fd-b danger" @click="doDeleteFolder(true)">파일까지 삭제</button>
+        </div>
+      </div>
     </div>
   </section>
 </template>
@@ -177,8 +325,9 @@ function notify(msg) {
 .tabs {
   display: flex;
   gap: 5px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
   flex-wrap: wrap;
+  align-items: center;
 }
 .tab {
   font-size: 12px;
@@ -193,6 +342,43 @@ function notify(msg) {
   border-color: var(--accent);
   color: #fff;
   font-weight: 600;
+}
+.tab.addf {
+  border-style: dashed;
+  color: var(--teal);
+  border-color: color-mix(in srgb, var(--teal) 45%, transparent);
+  background: transparent;
+}
+.tab.folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.tab.folder .fc {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+.tab.folder .fx {
+  font-size: 10px;
+  opacity: 0;
+  margin-left: 1px;
+  border-radius: 4px;
+  padding: 0 3px;
+  transition: opacity 0.15s, background 0.15s;
+}
+.tab.folder:hover .fx { opacity: 0.7; }
+.tab.folder .fx:hover { opacity: 1; background: rgba(192, 57, 43, 0.85); color: #fff; }
+.tab.folder.drop {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--text);
+}
+.fhint {
+  font-size: 11px;
+  color: var(--faint);
+  font-style: italic;
+  margin: 0 0 10px;
 }
 .selbar {
   display: flex;
@@ -230,4 +416,37 @@ function notify(msg) {
   padding: 24px 4px;
   text-align: center;
 }
+
+/* 폴더 삭제 다이얼로그 */
+.fd-ov {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 11, 13, 0.72);
+  display: grid;
+  place-items: center;
+  z-index: 30;
+  padding: 20px;
+}
+.fd {
+  width: 360px;
+  max-width: 100%;
+  background: var(--sf);
+  border: 1px solid var(--bd);
+  border-radius: 13px;
+  padding: 18px;
+}
+.fd-t { font-size: 14px; font-weight: 680; }
+.fd-s { font-size: 11.5px; color: var(--muted); margin-top: 7px; line-height: 1.5; }
+.fd-btns { display: flex; gap: 8px; margin-top: 16px; justify-content: flex-end; flex-wrap: wrap; }
+.fd-b {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 13px;
+  border-radius: 8px;
+  border: 1px solid var(--bd);
+  background: var(--elev);
+  color: var(--text);
+}
+.fd-b.ghost { color: var(--muted); background: transparent; }
+.fd-b.danger { background: #c0392b; border-color: #c0392b; color: #fff; }
 </style>

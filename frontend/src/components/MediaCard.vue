@@ -5,7 +5,12 @@ import HoverPreview from './HoverPreview.vue'
 import { typeEmoji, typeLabel, thumbGradient } from '../mediaView.js'
 import { formatTime } from '../format.js'
 
-const props = defineProps({ item: Object, selected: Boolean })
+const props = defineProps({
+  item: Object,
+  selected: Boolean,
+  deleteIcon: { type: String, default: '🗑' },
+  deleteTitle: { type: String, default: '삭제' },
+})
 const emit = defineEmits(['toggle', 'save-title', 'add-queue', 'delete'])
 
 // ---- 호버 미리보기 (200ms 디바운스) ----
@@ -70,7 +75,7 @@ const durText = computed(() =>
 
       <div class="acts">
         <button class="act" @click.stop="emit('add-queue', item.content_id)" title="재생목록에 추가">＋</button>
-        <button class="act del" @click.stop="emit('delete', item.content_id)" title="삭제">🗑</button>
+        <button class="act del" @click.stop="emit('delete', item.content_id)" :title="deleteTitle">{{ deleteIcon }}</button>
       </div>
 
       <HoverPreview v-if="expanded" :item="item" />

@@ -45,7 +45,7 @@ async function play(pl) {
 async function create() {
   try {
     const r = await plApi.create('새 목록')
-    if (r && r.id) emit('open', r.id)
+    if (r && r.id) emit('open', { id: r.id, justCreated: true }) // 빈 채로 닫으면 자동 삭제
   } catch {
     notify('새 목록을 만들지 못했습니다.')
   }

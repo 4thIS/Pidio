@@ -87,5 +87,6 @@ def delete_media(conn, content_id) -> None:
         "DELETE FROM playlist_blocks WHERE video_id=? OR music_id=?",
         (content_id, content_id),
     )
+    conn.execute("DELETE FROM folder_items WHERE content_id=?", (content_id,))
     conn.execute("DELETE FROM media WHERE content_id=?", (content_id,))
     conn.commit()

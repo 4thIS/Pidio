@@ -226,10 +226,22 @@ function coverStyle(c) {
   padding: 4px;
   cursor: pointer;
   text-align: left;
+  position: relative;
 }
 .vid.cur { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .vid.dragging { opacity: 0.4; }
-.vid.over { border-color: var(--teal); box-shadow: -2px 0 0 var(--teal); }
+/* 항목 사이에 세로 삽입선(| 느낌) — 이 카드 '앞'에 들어감을 표시 */
+.vid.over::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 3px;
+  bottom: 3px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--teal);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--teal) 70%, transparent);
+}
 .vid:active { cursor: grabbing; }
 .vid .th {
   height: 60px;

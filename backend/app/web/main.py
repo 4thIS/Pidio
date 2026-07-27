@@ -20,6 +20,7 @@ from app.web.sse import StateHub, router as sse_router
 from app.web.upload import router as upload_router
 from app.web.streaming import router as streaming_router
 from app.web.routers.media import router as media_router
+from app.web.routers.folders import router as folders_router
 from app.web.routers.playlists import router as playlists_router
 from app.web.routers.schedule import router as schedule_router
 from app.web.routers.player import router as player_router
@@ -61,6 +62,7 @@ def create_app(testing: bool = False) -> FastAPI:
     app.include_router(upload_router)
     app.include_router(streaming_router)
     app.include_router(media_router)
+    app.include_router(folders_router)
     app.include_router(playlists_router)
     app.include_router(schedule_router)
     app.include_router(player_router)

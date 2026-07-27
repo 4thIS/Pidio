@@ -13,9 +13,25 @@ import PlaylistDetail from './components/PlaylistDetail.vue'
 import Uploader from './components/Uploader.vue'
 import Settings from './components/Settings.vue'
 
-// 간단 뷰 전환: 메인 ↔ 플레이리스트 상세 ↔ 설정 (라우터 없이)
+// 간단 뷰 전환: 메인 위에 플레이리스트 상세(모달) ↔ 설정 (라우터 없이)
 const detailId = ref(null)
+const detailJustCreated = ref(false)
 const showSettings = ref(false)
+
+function openDetail(payload) {
+  // payload: 숫자 id(카드 클릭) 또는 {id, justCreated}(새 목록 생성)
+  if (payload !== null && typeof payload === 'object') {
+    detailId.value = payload.id
+    detailJustCreated.value = !!payload.justCreated
+  } else {
+    detailId.value = payload
+    detailJustCreated.value = false
+  }
+}
+function closeDetail() {
+  detailId.value = null
+  detailJustCreated.value = false
+}
 const uploader = ref(null)
 const libKey = ref(0) // 업로드 완료 시 목록 새로고침
 const plKey = ref(0)  // 미디어 삭제 시 플레이리스트 목록 새로고침
@@ -66,12 +82,21 @@ async function logout() {
 
     <Settings v-if="showSettings" @close="showSettings = false" />
 
-    <PlaylistDetail v-else-if="detailId !== null" :id="detailId" @close="detailId = null" />
-
     <div v-else class="rest">
-      <Playlists :key="plKey" @open="detailId = $event" />
+      <Playlists :key="plKey" @open="openDetail" />
       <Library :key="libKey" @media-deleted="plKey++" />
     </div>
+
+    <!-- 플리 상세: 원래 화면 위에 박스로 열림 -->
+    <Transition name="modal">
+      <PlaylistDetail
+        v-if="detailId !== null"
+        :id="detailId"
+        :just-created="detailJustCreated"
+        @close="closeDetail"
+        @changed="plKey++"
+      />
+    </Transition>
 
     <Uploader ref="uploader" @uploaded="libKey++" />
   </main>

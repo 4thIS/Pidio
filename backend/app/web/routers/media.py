@@ -2,13 +2,12 @@
 """E-1 미디어 라우터 (Task 8.1) — media_repo 위임."""
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from app.domain import media_repo
 from app.web.auth import require_session
+from app.web.media_ops import remove_media_fully
 from app.web.serializers import media_out
 
 router = APIRouter(prefix="/api/media", tags=["media"], dependencies=[Depends(require_session)])
@@ -35,18 +34,7 @@ def patch_media(content_id: str, body: PatchBody, request: Request) -> dict:
 @router.delete("/{content_id}")
 def remove_media(content_id: str, request: Request) -> dict:
     deps = request.app.state.deps
-    m = media_repo.get_media(deps.db, content_id)
-    if m and m["rel_path"]:
-        try:
-            (Path(deps.media_root) / m["rel_path"]).unlink()
-        except OSError:
-            pass
-    try:
-        (Path(deps.media_root) / ".pidio" / "thumbs" / f"{content_id}.jpg").unlink()
-    except OSError:
-        pass
-    media_repo.delete_media(deps.db, content_id)
-    # 라이브 재생 큐에서도 즉시 제거 + 상태 방송(플리/큐/재생바 갱신)
-    deps.player.remove_content(content_id)
+    remove_media_fully(deps, content_id)
+    # 라이브 재생 큐/플리/재생바 상태 방송
     request.app.state.hub.publish(deps.player.get_state())
     return {"ok": True}

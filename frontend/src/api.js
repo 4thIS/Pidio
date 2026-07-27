@@ -81,6 +81,19 @@ export const playlists = {
   add: (id, contentIds) => api(`/api/playlists/${id}/add`, { method: 'POST', body: { content_ids: contentIds } }),
 }
 
+// 폴더 (전체목록 수동 그룹)
+export const folders = {
+  list: () => api('/api/folders'),
+  get: (id) => api(`/api/folders/${id}`),
+  create: (name) => api('/api/folders', { method: 'POST', body: { name } }),
+  remove: (id, deleteMedia = false) =>
+    api(`/api/folders/${id}?delete_media=${deleteMedia ? 'true' : 'false'}`, { method: 'DELETE' }),
+  addItems: (id, contentIds) =>
+    api(`/api/folders/${id}/items`, { method: 'POST', body: { content_ids: contentIds } }),
+  removeItem: (id, contentId) =>
+    api(`/api/folders/${id}/items/${contentId}`, { method: 'DELETE' }),
+}
+
 // 설정 (Phase 8/Task 8.5)
 export const settings = {
   get: () => api('/api/settings'),
