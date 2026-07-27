@@ -16,7 +16,7 @@ def _now() -> str:
 
 def list_folders(conn):
     out = []
-    for f in conn.execute("SELECT * FROM folders ORDER BY id").fetchall():
+    for f in conn.execute("SELECT * FROM folders ORDER BY sort_order, id").fetchall():
         n = conn.execute(
             "SELECT COUNT(*) FROM folder_items WHERE folder_id=?", (f["id"],)
         ).fetchone()[0]
@@ -25,11 +25,19 @@ def list_folders(conn):
 
 
 def create_folder(conn, name) -> int:
+    nxt = conn.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM folders").fetchone()[0]
     cur = conn.execute(
-        "INSERT INTO folders(name, created_at) VALUES(?,?)", (name, _now())
+        "INSERT INTO folders(name, sort_order, created_at) VALUES(?,?,?)", (name, nxt, _now())
     )
     conn.commit()
     return cur.lastrowid
+
+
+def reorder_folders(conn, ordered_ids) -> None:
+    """드래그 재정렬: 주어진 id 순서대로 sort_order 재부여."""
+    for pos, fid in enumerate(ordered_ids):
+        conn.execute("UPDATE folders SET sort_order=? WHERE id=?", (pos, fid))
+    conn.commit()
 
 
 def delete_folder(conn, folder_id) -> None:

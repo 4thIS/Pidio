@@ -1,6 +1,6 @@
 <script setup>
 // D-4 플레이리스트 카드 목록 (가로 스크롤). 클릭 → 상세, ▶ → 재생.
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { playlists as plApi, ApiError } from '../api.js'
 import { MOCK_PLAYLISTS, mediaById } from '../mock.js'
 import { thumbGradient } from '../mediaView.js'
@@ -87,26 +87,54 @@ async function commitEdit(pl) {
   }
 }
 
-const dragOverId = ref(null)
+const dragOverId = ref(null) // 미디어 추가 하이라이트
+const dragId = ref(null)     // 재정렬 중인 플리 id
+const overId = ref(null)     // 재정렬 드롭 대상 id
+const dragFromIdx = computed(() => items.value.findIndex((x) => x.id === dragId.value))
+
 function onCardDragStart(e, pl) {
   e.dataTransfer.setData('application/x-pidio-playlist', JSON.stringify({ id: pl.id }))
-  e.dataTransfer.effectAllowed = 'copy'
+  e.dataTransfer.effectAllowed = 'copyMove'
+  dragId.value = pl.id
+}
+function onCardDragEnd() {
+  dragId.value = null
+  overId.value = null
 }
 function onCardDragOver(e, pl) {
-  if ([...(e.dataTransfer?.types || [])].includes('application/x-pidio-media')) {
+  const t = [...(e.dataTransfer?.types || [])]
+  if (t.includes('application/x-pidio-media')) {
     e.preventDefault()
     dragOverId.value = pl.id
+  } else if (t.includes('application/x-pidio-playlist')) {
+    e.preventDefault()
+    overId.value = pl.id
   }
 }
 function onCardDrop(e, pl) {
   dragOverId.value = null
+  overId.value = null
   const media = e.dataTransfer.getData('application/x-pidio-media')
-  if (!media) return
-  e.preventDefault()
-  const { content_id } = JSON.parse(media)
-  plApi.add(pl.id, [content_id])
-    .then(() => { pl.item_count = (pl.item_count || 0) + 1; notify(`"${pl.name}"에 추가됨.`) })
-    .catch(() => notify('추가하지 못했습니다.'))
+  const pld = e.dataTransfer.getData('application/x-pidio-playlist')
+  if (media) {
+    e.preventDefault()
+    const { content_ids } = JSON.parse(media)
+    plApi.add(pl.id, content_ids)
+      .then(() => { pl.item_count = (pl.item_count || 0) + content_ids.length; notify(`"${pl.name}"에 ${content_ids.length}개 추가됨.`) })
+      .catch(() => notify('추가하지 못했습니다.'))
+  } else if (pld) {
+    e.preventDefault()
+    const { id } = JSON.parse(pld)
+    if (id === pl.id) return
+    const from = items.value.findIndex((x) => x.id === id)
+    const to = items.value.findIndex((x) => x.id === pl.id)
+    if (from < 0 || to < 0) return
+    const arr = [...items.value]
+    const [moved] = arr.splice(from, 1)
+    arr.splice(to, 0, moved)
+    items.value = arr
+    plApi.reorder(arr.map((x) => x.id)).catch(() => load())
+  }
 }
 
 let nt = null
@@ -126,9 +154,15 @@ function notify(msg) {
     </div>
 
     <div class="pls">
-      <div v-for="pl in items" :key="pl.id" class="pl" :class="{ dragover: dragOverId === pl.id }" @click="emit('open', pl.id)"
-           draggable="true" @dragstart="onCardDragStart($event, pl)"
-           @dragover="onCardDragOver($event, pl)" @dragleave="dragOverId = null" @drop="onCardDrop($event, pl)">
+      <div v-for="(pl, pi) in items" :key="pl.id" class="pl"
+           :class="{
+             dragover: dragOverId === pl.id,
+             'ins-before': overId === pl.id && dragFromIdx > pi,
+             'ins-after': overId === pl.id && dragFromIdx < pi,
+           }"
+           @click="emit('open', pl.id)"
+           draggable="true" @dragstart="onCardDragStart($event, pl)" @dragend="onCardDragEnd"
+           @dragover="onCardDragOver($event, pl)" @dragleave="dragOverId = null; overId = null" @drop="onCardDrop($event, pl)">
         <div class="cover">
           <span v-for="(c, i) in (pl.cover_content_ids || pl.cover || []).slice(0, 3)" :key="i" class="s" :class="'s' + i" :style="coverStyle(c)"></span>
           <button class="del" @click.stop="remove(pl)" aria-label="삭제" title="목록 삭제">🗑</button>
@@ -189,9 +223,25 @@ function notify(msg) {
   padding: 9px;
   cursor: pointer;
   transition: border-color 0.15s;
+  position: relative;
 }
 .pl:hover { border-color: var(--muted); }
 .pl.dragover { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent); }
+/* 재정렬 삽입선(| 느낌): 드래그 방향에 맞춰 왼쪽(앞)/오른쪽(뒤) */
+.pl.ins-before::before,
+.pl.ins-after::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--teal);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--teal) 70%, transparent);
+  z-index: 3;
+}
+.pl.ins-before::before { left: -7px; }
+.pl.ins-after::after { right: -7px; }
 .cover {
   height: 82px;
   border-radius: 8px;

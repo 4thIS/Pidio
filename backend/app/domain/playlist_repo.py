@@ -40,13 +40,21 @@ def selection_to_blocks(conn, content_ids) -> list[Block]:
 # ---- 플레이리스트 CRUD ----
 
 def create_playlist(conn, name) -> int:
+    nxt = conn.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM playlists").fetchone()[0]
     cur = conn.execute(
-        "INSERT INTO playlists(name, repeat_mode, shuffle, created_at, updated_at) "
-        "VALUES(?, 'off', 0, ?, ?)",
-        (name, _now(), _now()),
+        "INSERT INTO playlists(name, repeat_mode, shuffle, sort_order, created_at, updated_at) "
+        "VALUES(?, 'off', 0, ?, ?, ?)",
+        (name, nxt, _now(), _now()),
     )
     conn.commit()
     return cur.lastrowid
+
+
+def reorder_playlists(conn, ordered_ids) -> None:
+    """드래그 재정렬: 주어진 id 순서대로 sort_order 재부여."""
+    for pos, pid in enumerate(ordered_ids):
+        conn.execute("UPDATE playlists SET sort_order=? WHERE id=?", (pos, pid))
+    conn.commit()
 
 
 def update_playlist(conn, playlist_id, name, repeat_mode, shuffle, blocks) -> None:
@@ -129,7 +137,7 @@ def get_playlist(conn, playlist_id):
 
 def list_playlists(conn):
     out = []
-    for pl in conn.execute("SELECT * FROM playlists ORDER BY id").fetchall():
+    for pl in conn.execute("SELECT * FROM playlists ORDER BY sort_order, id").fetchall():
         blocks = blocks_of(conn, pl["id"])
         total = 0.0
         covers = []

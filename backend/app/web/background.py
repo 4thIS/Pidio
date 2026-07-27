@@ -38,7 +38,27 @@ def process_added(deps, added_ids) -> None:
         if m["media_type"] in ("video", "photo"):
             thumb = thumb_dir / f"{cid}.jpg"
             if not thumb.exists():
-                media_tools.make_thumbnail(path, str(thumb))
+                # 사진은 정지 이미지라 탐색(-ss) 없이(at_sec=0) 첫 프레임 추출
+                at = 1.0 if m["media_type"] == "video" else 0.0
+                media_tools.make_thumbnail(path, str(thumb), at_sec=at)
+
+
+def backfill_thumbnails(deps) -> int:
+    """썸네일 없는 기존 동영상/사진에 썸네일 생성(부팅 시 1회). 생성한 개수 반환."""
+    thumb_dir = Path(deps.media_root) / ".pidio" / "thumbs"
+    thumb_dir.mkdir(parents=True, exist_ok=True)
+    made = 0
+    for mt, at in (("video", 1.0), ("photo", 0.0)):
+        for m in media_repo.list_media(deps.db, mt):
+            if not m["rel_path"]:
+                continue
+            thumb = thumb_dir / f"{m['content_id']}.jpg"
+            if thumb.exists():
+                continue
+            path = os.path.join(deps.media_root, m["rel_path"])
+            if media_tools.make_thumbnail(path, str(thumb), at_sec=at):
+                made += 1
+    return made
 
 
 def startup_scan(deps) -> int:
@@ -51,6 +71,7 @@ def startup_scan(deps) -> int:
         return 0
     result = scanner.scan_library(deps.db, deps.media_root)
     process_added(deps, result["added"])
+    backfill_thumbnails(deps)  # 이전에 실패했던 사진 썸네일 등 보충
     return result["seen"]
 
 

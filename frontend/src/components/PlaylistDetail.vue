@@ -4,7 +4,7 @@
 import { ref, computed, onMounted } from 'vue'
 import ScheduleModal from './ScheduleModal.vue'
 import { scheduleSummary } from '../schedule.js'
-import { playlists as plApi, media as mediaApi } from '../api.js'
+import { playlists as plApi, media as mediaApi, folders as folderApi } from '../api.js'
 import { MOCK_MEDIA, MOCK_PLAYLIST_DETAIL } from '../mock.js'
 import { normalizeBlocks, serializeBlocks, newSlideshow, newVideo, newPhoto } from '../playlistModel.js'
 import { typeEmoji, thumbGradient } from '../mediaView.js'
@@ -35,6 +35,11 @@ async function load() {
   }
   allMedia.value = list
   mediaMap.value = Object.fromEntries(list.map((m) => [m.content_id, m]))
+  try {
+    pickerFolders.value = await folderApi.list()
+  } catch {
+    pickerFolders.value = []
+  }
   let d
   try {
     d = await plApi.get(props.id)
@@ -137,6 +142,39 @@ function onSchedRemoved() {
 
 // ---- 항목 추가(피커) ----
 const picker = ref(false)
+const PICKER_CATS = [
+  { k: 'all', label: '전체' },
+  { k: 'video', label: '🎬 동영상' },
+  { k: 'photo', label: '🖼 사진' },
+  { k: 'music', label: '🎵 음악' },
+]
+const pickerCat = ref('all') // 'all'|'video'|'photo'|'music'|'folder:<id>'
+const pickerFolders = ref([])
+const pickerFolderIds = ref([])
+function openPicker() {
+  pickerCat.value = 'all'
+  picker.value = true
+}
+async function setPickerCat(k) {
+  pickerCat.value = k
+  if (k.startsWith('folder:')) {
+    try {
+      const f = await folderApi.get(Number(k.slice(7)))
+      pickerFolderIds.value = f.content_ids
+    } catch {
+      pickerFolderIds.value = []
+    }
+  }
+}
+const pickerList = computed(() => {
+  if (pickerCat.value.startsWith('folder:')) {
+    const s = new Set(pickerFolderIds.value)
+    return allMedia.value.filter((m) => s.has(m.content_id))
+  }
+  return pickerCat.value === 'all'
+    ? allMedia.value
+    : allMedia.value.filter((m) => m.media_type === pickerCat.value)
+})
 function blockFromMedia(cid) {
   const m = mediaMap.value[cid]
   if (!m) return null
@@ -255,7 +293,11 @@ function notify(msg) {
             v-for="(b, i) in blocks"
             :key="b._key"
             class="qc"
-            :class="{ over: overIndex === i, dragging: dragIndex === i }"
+            :class="{
+              dragging: dragIndex === i,
+              'ins-before': overIndex === i && dragIndex !== null && dragIndex > i,
+              'ins-after': overIndex === i && dragIndex !== null && dragIndex < i,
+            }"
             draggable="true"
             @dragstart="onCardDragStart(i, $event)"
             @dragover="onCardDragOver(i, $event)"
@@ -271,7 +313,7 @@ function notify(msg) {
             <div class="t">{{ btitle(b) }}</div>
           </div>
 
-          <button class="addcard" @click="picker = true" title="항목 추가">
+          <button class="addcard" @click="openPicker" title="항목 추가">
             <span class="plus">＋</span><span class="al">추가</span>
           </button>
         </div>
@@ -295,15 +337,36 @@ function notify(msg) {
             <b>항목 추가</b>
             <button class="x2" @click="picker = false">✕</button>
           </div>
+          <div class="ph-cats">
+            <button
+              v-for="c in PICKER_CATS"
+              :key="c.k"
+              class="cat"
+              :class="{ on: pickerCat === c.k }"
+              @click="setPickerCat(c.k)"
+            >
+              {{ c.label }}
+            </button>
+            <span v-if="pickerFolders.length" class="catdiv"></span>
+            <button
+              v-for="f in pickerFolders"
+              :key="'pf' + f.id"
+              class="cat"
+              :class="{ on: pickerCat === 'folder:' + f.id }"
+              @click="setPickerCat('folder:' + f.id)"
+            >
+              📁 {{ f.name }}
+            </button>
+          </div>
           <div class="ph-list">
-            <button v-for="m in allMedia" :key="m.content_id" class="pick" @click="choose(m.content_id)">
+            <button v-for="m in pickerList" :key="m.content_id" class="pick" @click="choose(m.content_id)">
               <span class="pt" :style="m.thumb_url ? coverStyle(m.content_id) : { background: thumbGradient(m) }">
                 <span v-if="!m.thumb_url">{{ typeEmoji(m.media_type) }}</span>
               </span>
               <span class="pn">{{ m.title }}</span>
               <span v-if="m.media_type !== 'photo'" class="pd">{{ formatTime(m.duration) }}</span>
             </button>
-            <div v-if="!allMedia.length" class="empty">담을 미디어가 없습니다.</div>
+            <div v-if="!pickerList.length" class="empty">이 카테고리에 담을 미디어가 없습니다.</div>
           </div>
         </div>
       </div>
@@ -385,16 +448,18 @@ function notify(msg) {
   position: relative;
 }
 .qc.dragging { opacity: 0.4; }
-.qc.over::before {
+.qc.ins-before::before,
+.qc.ins-after::after {
   content: '';
   position: absolute;
-  left: -6px;
   top: 4px;
   bottom: 4px;
   width: 3px;
   border-radius: 2px;
   background: var(--teal);
 }
+.qc.ins-before::before { left: -5px; }
+.qc.ins-after::after { right: -5px; }
 .qc .th {
   height: 76px;
   border-radius: 7px;
@@ -447,6 +512,24 @@ function notify(msg) {
 .picker { width: 380px; max-width: 100%; max-height: 70vh; display: flex; flex-direction: column; background: var(--sf); border: 1px solid var(--bd); border-radius: 13px; overflow: hidden; }
 .ph-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--bd); }
 .ph-head .x2 { border: none; background: transparent; color: var(--faint); font-size: 14px; }
+.ph-cats {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--bd);
+}
+.ph-cats .cat {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 16px;
+  border: 1px solid var(--bd);
+  background: var(--elev);
+  color: var(--muted);
+}
+.ph-cats .cat.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.ph-cats .catdiv { width: 1px; align-self: stretch; background: var(--bd); margin: 1px 2px; }
 .ph-list { overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
 .pick { display: flex; align-items: center; gap: 10px; padding: 7px 9px; border-radius: 8px; border: 1px solid transparent; background: transparent; color: var(--text); text-align: left; }
 .pick:hover { background: var(--elev); border-color: var(--bd); }

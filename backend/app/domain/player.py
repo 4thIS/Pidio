@@ -198,18 +198,31 @@ class Player:
         )
 
     def queue_view(self):
-        """재생 큐를 재생 순서대로 [{content_id, kind, current}]. 큐 패널용."""
+        """재생 큐를 재생 순서대로 [{content_id, kind, current, sec}]. 큐 패널용.
+
+        sec: 사진 블록의 표시시간(초), 사진 아니면 None.
+        """
         out = []
         for i, oi in enumerate(self.order):
             b = self.queue[oi]
+            sec = None
             if b.kind == "video":
                 cid = b.video_id
             elif b.photos:
                 cid = b.photos[0][0]
+                sec = b.photos[0][1]
             else:
                 cid = b.music_id
-            out.append({"content_id": cid, "kind": b.kind, "current": i == self.pos})
+            out.append({"content_id": cid, "kind": b.kind, "current": i == self.pos, "sec": sec})
         return out
+
+    def set_photo_duration(self, index, sec):
+        """큐 index 블록(사진 슬라이드쇼)의 표시시간을 갱신."""
+        if not (0 <= index < len(self.queue)):
+            return
+        b = self.queue[index]
+        if b.kind == "slideshow" and b.photos:
+            b.photos = [(pid, float(sec)) for pid, _ in b.photos]
 
     # ---- 내부 ----
     def _rebuild_order(self):

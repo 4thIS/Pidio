@@ -488,3 +488,25 @@ def test_remove_content_empty_slideshow_dropped():
     p.remove_content("/p/1.jpg")          # 마지막 사진·음악 없음 → 블록 제거
     assert p.get_state().queue_len == 0
     assert v.loaded == "/standby.png"
+
+
+# ---- 큐 사진 표시시간 (#4) ----
+
+def test_queue_view_includes_photo_sec():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="slideshow", photos=[("p1", 7.0)])], "s")
+    view = p.queue_view()
+    assert view[0]["content_id"] == "p1" and view[0]["sec"] == 7.0
+
+
+def test_queue_view_sec_none_for_video():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="v1")], "s")
+    assert p.queue_view()[0]["sec"] is None
+
+
+def test_set_photo_duration_updates_block():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="slideshow", photos=[("p1", 5.0), ("p2", 5.0)])], "s")
+    p.set_photo_duration(0, 9)
+    assert p.queue[0].photos == [("p1", 9.0), ("p2", 9.0)]

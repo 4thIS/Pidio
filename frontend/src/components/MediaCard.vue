@@ -1,6 +1,6 @@
 <script setup>
-// D-3 미디어 카드 — 체크박스 선택 · 제목 인라인 수정 · 호버(디바운스 200ms) 시 확대+미리보기.
-import { ref, computed, onBeforeUnmount } from 'vue'
+// D-3 미디어 카드 — 카드 클릭으로 선택(다중선택 시 드래그로 함께 이동) · 제목/사진시간 인라인 수정 · 호버 미리보기.
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import HoverPreview from './HoverPreview.vue'
 import { typeEmoji, typeLabel, thumbGradient } from '../mediaView.js'
 import { formatTime } from '../format.js'
@@ -8,10 +8,11 @@ import { formatTime } from '../format.js'
 const props = defineProps({
   item: Object,
   selected: Boolean,
+  selectedIds: { type: Array, default: () => [] },
   deleteIcon: { type: String, default: '🗑' },
   deleteTitle: { type: String, default: '삭제' },
 })
-const emit = defineEmits(['toggle', 'save-title', 'add-queue', 'delete'])
+const emit = defineEmits(['toggle', 'save-title', 'add-queue', 'delete', 'set-photo-sec'])
 
 // ---- 호버 미리보기 (200ms 디바운스) ----
 const expanded = ref(false)
@@ -39,13 +40,29 @@ function commit() {
   if (t && t !== props.item.title) emit('save-title', props.item.content_id, t)
 }
 
+// ---- 사진 표시시간 인라인 수정 ----
+const secDraft = ref(props.item.photo_sec ?? 5)
+watch(() => props.item.photo_sec, (v) => (secDraft.value = v ?? 5))
+function commitSec() {
+  const s = Number(secDraft.value)
+  if (s > 0 && s !== (props.item.photo_sec ?? 5)) emit('set-photo-sec', props.item.content_id, s)
+}
+
 const thumbFailed = ref(false)
 const thumbSrc = computed(() =>
   props.item.thumb_url && !thumbFailed.value ? props.item.thumb_url : null,
 )
 
 function onDragStart(e) {
-  e.dataTransfer.setData('application/x-pidio-media', JSON.stringify({ content_id: props.item.content_id, media_type: props.item.media_type }))
+  // 이 카드가 선택되어 있으면 선택된 전체를, 아니면 이 카드만 드래그(다중이동)
+  const ids =
+    props.selected && props.selectedIds.length > 1
+      ? [...props.selectedIds]
+      : [props.item.content_id]
+  e.dataTransfer.setData(
+    'application/x-pidio-media',
+    JSON.stringify({ content_ids: ids, media_type: props.item.media_type }),
+  )
   e.dataTransfer.effectAllowed = 'copy'
 }
 
@@ -60,18 +77,12 @@ const durText = computed(() =>
     :class="{ sel: selected, expanded, dim: item.available === false }"
     @mouseenter="enter"
     @mouseleave="leave"
+    @click="emit('toggle', item.content_id)"
     draggable="true"
     @dragstart="onDragStart"
   >
     <div class="thumb" :style="{ background: thumbGradient(item) }">
-      <button
-        class="chk"
-        :class="{ on: selected }"
-        @click.stop="emit('toggle', item.content_id)"
-        :aria-label="selected ? '선택 해제' : '선택'"
-      >
-        <span v-if="selected">✓</span>
-      </button>
+      <span v-if="selected" class="selmark">✓</span>
 
       <div class="acts">
         <button class="act" @click.stop="emit('add-queue', item.content_id)" title="재생목록에 추가">＋</button>
@@ -82,8 +93,15 @@ const durText = computed(() =>
       <template v-else>
         <img v-if="thumbSrc" class="thumbimg" :src="thumbSrc" alt="" draggable="false" @error="thumbFailed = true" />
         <span v-else class="emoji">{{ typeEmoji(item.media_type) }}</span>
-        <span v-if="durText" class="dur">{{ durText }}</span>
       </template>
+
+      <!-- 오른쪽 아래: 동영상=고정 시간 / 사진=시간 입력 -->
+      <span v-if="item.media_type === 'photo'" class="dur photo" @click.stop>
+        <input class="secin" type="number" min="1" step="1" v-model.number="secDraft"
+               @change="commitSec" @keyup.enter="commitSec" @blur="commitSec" @click.stop />
+        <span class="u">초</span>
+      </span>
+      <span v-else-if="durText" class="dur">{{ durText }}</span>
     </div>
 
     <div class="info">
@@ -97,7 +115,7 @@ const durText = computed(() =>
         @keyup.esc="editing = false"
         @click.stop
       />
-      <div v-else class="nm" @dblclick="startEdit" :title="item.title">
+      <div v-else class="nm" @dblclick.stop="startEdit" :title="item.title">
         <span class="txt">{{ item.title }}</span>
         <button class="pen" @click.stop="startEdit" aria-label="제목 수정">✎</button>
       </div>
@@ -117,8 +135,9 @@ const durText = computed(() =>
   overflow: hidden;
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.15s;
   will-change: transform;
+  cursor: pointer;
 }
-.card.sel { border-color: var(--accent); }
+.card.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .card.dim { opacity: 0.45; }
 .card.expanded {
   transform: scale(1.14);
@@ -138,25 +157,19 @@ const durText = computed(() =>
 }
 .thumbimg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .emoji { font-size: 22px; }
-.chk {
+.selmark {
   position: absolute;
-  top: 7px;
-  left: 7px;
-  width: 18px;
-  height: 18px;
-  border-radius: 5px;
-  border: 1.5px solid rgba(255, 255, 255, 0.6);
-  background: rgba(0, 0, 0, 0.35);
+  top: 6px;
+  left: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--accent);
   color: #fff;
-  font-size: 11px;
+  font-size: 12px;
   display: grid;
   place-items: center;
-  padding: 0;
   z-index: 2;
-}
-.chk.on {
-  background: var(--accent);
-  border-color: var(--accent);
 }
 .acts {
   position: absolute;
@@ -194,6 +207,28 @@ const durText = computed(() =>
   padding: 1px 5px;
   border-radius: 4px;
 }
+.dur.photo {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 1px 4px;
+  background: rgba(0, 0, 0, 0.72);
+}
+.dur.photo .secin {
+  width: 26px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: right;
+  padding: 0;
+  -moz-appearance: textfield;
+}
+.dur.photo .secin::-webkit-outer-spin-button,
+.dur.photo .secin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.dur.photo .u { font-size: 9px; }
 .info { padding: 7px 8px; }
 .nm {
   display: flex;

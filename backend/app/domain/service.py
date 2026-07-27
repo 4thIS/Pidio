@@ -10,6 +10,17 @@ import datetime as dt
 from . import playlist_repo, scheduler
 
 
+def _block_to_dict(b):
+    """도메인 Block → update_playlist 용 dict."""
+    if b.kind == "video":
+        return {"kind": "video", "video_id": b.video_id}
+    return {
+        "kind": "slideshow",
+        "music_id": b.music_id,
+        "photos": [{"photo_id": pid, "duration_sec": sec} for pid, sec in b.photos],
+    }
+
+
 class AppService:
     def __init__(self, conn, player, now_fn=None):
         self.conn = conn
@@ -44,6 +55,16 @@ class AppService:
         self._active_playlist_id = None if manual else playlist_id
         self.current_source_playlist_id = playlist_id
         self._showing_standby = False
+
+    def save_queue_as_playlist(self, name):
+        """현재 재생 큐(블록들)를 새 플레이리스트로 저장. 새 id 반환."""
+        pid = playlist_repo.create_playlist(self.conn, name)
+        blocks = [_block_to_dict(b) for b in self.player.queue]
+        playlist_repo.update_playlist(
+            self.conn, pid, name,
+            self.player.repeat, bool(self.player.shuffle), blocks,
+        )
+        return pid
 
     # ---- 자동(스케줄) ----
     def evaluate_schedule(self, now=None):

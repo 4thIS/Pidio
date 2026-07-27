@@ -1,14 +1,17 @@
 <script setup>
-// 재생 큐 패널 — 재생바 아래 가로. 왼쪽: 재생중 플리 정보(+구분선), 오른쪽: 큐 동영상 목록.
-// 즉석선택(플리 아님) 재생이면 플리 정보 없이 목록만.
+// 재생 큐 패널 — 헤더(새 플리로 저장) + 왼쪽 재생중 플리 정보 + 오른쪽 큐 목록(썸네일).
+// 항목: X로 큐에서 삭제, 드래그로 순서변경, 사진은 표시시간 편집.
 import { ref, watch } from 'vue'
 import { store } from '../store.js'
 import { player as playerApi, playlists as plApi } from '../api.js'
 import { formatTime } from '../format.js'
 
+const emit = defineEmits(['saved'])
+
 const items = ref([])
 const source = ref(null)
 const added = ref([]) // 플리 재생 중 즉석 추가한 파일들(썸네일 겹침 표시용)
+const notice = ref('')
 
 async function load() {
   try {
@@ -21,7 +24,6 @@ async function load() {
   }
 }
 
-// 큐 길이·현재 인덱스·출처가 바뀌면 다시 로드
 watch(
   () => {
     const p = store.player
@@ -30,15 +32,43 @@ watch(
   load,
   { immediate: true },
 )
-
-// 출처 플리가 바뀌면(또는 즉석선택으로 전환) 추가표시 초기화
 watch(() => source.value?.id ?? null, () => { added.value = [] })
 
 function jump(i) {
   playerApi.jump(i).catch(() => {})
 }
 
-// ---- 큐 바깥에서 드롭(미디어 추가 / 플리 교체) ----
+let nt = null
+function flash(msg) {
+  notice.value = msg
+  clearTimeout(nt)
+  nt = setTimeout(() => (notice.value = ''), 2600)
+}
+
+// ---- 새 플레이리스트로 저장(#1) ----
+function saveQueue() {
+  if (!items.value.length) return
+  const name = (prompt('새 플레이리스트 이름', source.value?.name ? source.value.name + ' 복사' : '재생목록') || '').trim()
+  if (!name) return
+  playerApi
+    .saveQueue(name)
+    .then(() => { emit('saved'); flash(`"${name}"으로 저장했습니다.`) })
+    .catch(() => flash('저장에 실패했습니다.'))
+}
+
+// ---- 항목 삭제(#3) ----
+function removeItem(i, e) {
+  e?.stopPropagation()
+  playerApi.queueRemove(i).then(load).catch(() => {})
+}
+
+// ---- 사진 표시시간(#4) ----
+function onSecChange(i, e) {
+  const s = Number(e.target.value)
+  if (s > 0) playerApi.setPhotoSec(i, s).then(load).catch(() => {})
+}
+
+// ---- 바깥에서 드롭(미디어 추가 / 플리 교체) ----
 const dragOver = ref(false)
 function onDragOver(e) {
   const t = [...(e.dataTransfer?.types || [])]
@@ -53,11 +83,10 @@ function onDrop(e) {
   const pl = e.dataTransfer.getData('application/x-pidio-playlist')
   if (media) {
     e.preventDefault()
-    const { content_id } = JSON.parse(media)
-    playerApi.queueAdd([content_id]).then(() => {
+    const { content_ids } = JSON.parse(media)
+    playerApi.queueAdd(content_ids).then(() => {
       load()
-      // 플리 재생 중이면 "이 파일이 추가됨" 겹침 썸네일 표시
-      if (source.value && !added.value.includes(content_id)) added.value.push(content_id)
+      if (source.value) content_ids.forEach((c) => { if (!added.value.includes(c)) added.value.push(c) })
     }).catch(() => {})
   } else if (pl) {
     e.preventDefault()
@@ -66,7 +95,7 @@ function onDrop(e) {
   }
 }
 
-// ---- 큐 내부 항목 드래그로 순서 변경 ----
+// ---- 큐 내부 순서 변경 ----
 const dragIndex = ref(null)
 const overIndex = ref(null)
 function isQueueDrag(e) {
@@ -80,7 +109,7 @@ function onVidDragStart(i, e) {
 function onVidDragOver(i, e) {
   if (!isQueueDrag(e)) return
   e.preventDefault()
-  e.stopPropagation() // 바깥 섹션 드롭존과 분리
+  e.stopPropagation()
   overIndex.value = i
 }
 function onVidDrop(i, e) {
@@ -97,6 +126,7 @@ function onVidDragEnd() {
   dragIndex.value = null
   overIndex.value = null
 }
+
 function coverStyle(c) {
   return { backgroundImage: `url(/thumb/${c})`, backgroundSize: 'cover', backgroundColor: '#1a2129' }
 }
@@ -104,61 +134,102 @@ function coverStyle(c) {
 
 <template>
   <section class="pq" :class="{ over: dragOver }" @dragover="onDragOver" @dragleave="dragOver = false" @drop="onDrop">
-    <template v-if="source">
-      <div class="plcard">
-        <div class="cover">
-          <span
-            v-for="(c, i) in (source.cover_content_ids || []).slice(0, 3)"
-            :key="i" class="s" :class="'s' + i" :style="coverStyle(c)"
-          ></span>
-          <div v-if="added.length" class="added" :title="`추가된 ${added.length}개`">
-            <span v-for="c in added.slice(0, 3)" :key="c" class="am" :style="coverStyle(c)"></span>
-            <span v-if="added.length > 3" class="amore">+{{ added.length - 3 }}</span>
+    <div class="pqhead">
+      <span class="pqtitle">재생목록</span>
+      <span v-if="notice" class="pqnotice">{{ notice }}</span>
+      <span class="grow"></span>
+      <button class="saveq" :disabled="!items.length" @click="saveQueue" title="현재 재생목록을 새 플레이리스트로 저장">
+        💾 새 플리로 저장
+      </button>
+    </div>
+
+    <div class="pqbody">
+      <template v-if="source">
+        <div class="plcard">
+          <div class="cover">
+            <span
+              v-for="(c, i) in (source.cover_content_ids || []).slice(0, 3)"
+              :key="i" class="s" :class="'s' + i" :style="coverStyle(c)"
+            ></span>
+            <div v-if="added.length" class="added" :title="`추가된 ${added.length}개`">
+              <span v-for="c in added.slice(0, 3)" :key="c" class="am" :style="coverStyle(c)"></span>
+              <span v-if="added.length > 3" class="amore">+{{ added.length - 3 }}</span>
+            </div>
+          </div>
+          <div class="nm">{{ source.name }}</div>
+          <div class="mt">
+            <span>{{ source.item_count }}개<template v-if="added.length"> +{{ added.length }}</template></span>
+            <span>{{ formatTime(source.total_sec) }}</span>
           </div>
         </div>
-        <div class="nm">{{ source.name }}</div>
-        <div class="mt">
-          <span>{{ source.item_count }}개<template v-if="added.length"> +{{ added.length }}</template></span>
-          <span>{{ formatTime(source.total_sec) }}</span>
+        <div class="divider"></div>
+      </template>
+
+      <div v-if="!items.length" class="hint">여기에 동영상/플레이리스트를 드래그해 재생목록에 추가</div>
+      <div v-else class="vids">
+        <div
+          v-for="(it, i) in items" :key="i" class="vid"
+          :class="{
+            cur: it.current,
+            dragging: dragIndex === i,
+            'ins-before': overIndex === i && dragIndex !== null && dragIndex > i,
+            'ins-after': overIndex === i && dragIndex !== null && dragIndex < i,
+          }"
+          :title="it.title"
+          draggable="true"
+          @dragstart="onVidDragStart(i, $event)"
+          @dragover="onVidDragOver(i, $event)"
+          @drop="onVidDrop(i, $event)"
+          @dragend="onVidDragEnd"
+        >
+          <div class="th" :style="it.thumb_url ? coverStyle(it.content_id) : {}" @click="jump(i)">
+            <span v-if="!it.thumb_url">🎬</span>
+            <span v-if="it.current" class="badge">▶</span>
+            <button class="rmx" @click.stop="removeItem(i, $event)" title="재생목록에서 삭제">✕</button>
+            <span v-if="it.media_type === 'photo'" class="secbox" @click.stop>
+              <input class="secin" type="number" min="1" step="1" :value="it.photo_sec ?? 5" @change="onSecChange(i, $event)" @click.stop />초
+            </span>
+          </div>
+          <div class="t">{{ it.title }}</div>
         </div>
       </div>
-      <div class="divider"></div>
-    </template>
-
-    <div v-if="!items.length" class="hint">여기에 동영상/플레이리스트를 드래그해 재생목록에 추가</div>
-    <div v-else class="vids">
-      <button
-        v-for="(it, i) in items" :key="i" class="vid"
-        :class="{ cur: it.current, over: overIndex === i, dragging: dragIndex === i }"
-        @click="jump(i)" :title="it.title"
-        draggable="true"
-        @dragstart="onVidDragStart(i, $event)"
-        @dragover="onVidDragOver(i, $event)"
-        @drop="onVidDrop(i, $event)"
-        @dragend="onVidDragEnd"
-      >
-        <div class="th" :style="it.thumb_url ? coverStyle(it.content_id) : {}">
-          <span v-if="!it.thumb_url">🎬</span>
-          <span v-if="it.current" class="badge">▶</span>
-        </div>
-        <div class="t">{{ it.title }}</div>
-      </button>
     </div>
   </section>
 </template>
 
 <style scoped>
 .pq.over { outline: 2px dashed var(--accent); outline-offset: -4px; }
-.pq .hint { color: var(--faint); font-size: 12px; padding: 6px 2px; }
 .pq {
+  padding: 10px 16px 12px;
+  background: #141a1f;
+  border-bottom: 1px solid var(--bd);
+}
+.pqhead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 9px;
+}
+.pqtitle { font-size: 12px; font-weight: 680; color: var(--muted); letter-spacing: -0.01em; }
+.pqnotice { font-size: 11px; color: var(--teal); }
+.grow { flex: 1; }
+.saveq {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 11px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  color: var(--accent);
+}
+.saveq:disabled { opacity: 0.4; }
+.pqbody {
   display: flex;
   align-items: stretch;
   gap: 12px;
-  padding: 12px 16px;
-  background: #141a1f;
-  border-bottom: 1px solid var(--bd);
   overflow-x: auto;
 }
+.hint { color: var(--faint); font-size: 12px; padding: 6px 2px; }
 .plcard {
   width: 132px;
   flex: none;
@@ -224,17 +295,17 @@ function coverStyle(c) {
   border: 1px solid transparent;
   border-radius: 9px;
   padding: 4px;
-  cursor: pointer;
+  cursor: grab;
   text-align: left;
   position: relative;
 }
 .vid.cur { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .vid.dragging { opacity: 0.4; }
-/* 항목 사이에 세로 삽입선(| 느낌) — 이 카드 '앞'에 들어감을 표시 */
-.vid.over::before {
+/* 세로 삽입선(| 느낌): 드래그 방향에 맞춰 대상 카드의 왼쪽(앞)/오른쪽(뒤)에 표시 */
+.vid.ins-before::before,
+.vid.ins-after::after {
   content: '';
   position: absolute;
-  left: -6px;
   top: 3px;
   bottom: 3px;
   width: 3px;
@@ -242,7 +313,8 @@ function coverStyle(c) {
   background: var(--teal);
   box-shadow: 0 0 6px color-mix(in srgb, var(--teal) 70%, transparent);
 }
-.vid:active { cursor: grabbing; }
+.vid.ins-before::before { left: -6px; }
+.vid.ins-after::after { right: -6px; }
 .vid .th {
   height: 60px;
   border-radius: 6px;
@@ -252,6 +324,7 @@ function coverStyle(c) {
   place-items: center;
   overflow: hidden;
   font-size: 18px;
+  cursor: pointer;
 }
 .vid .th .badge {
   position: absolute;
@@ -266,6 +339,53 @@ function coverStyle(c) {
   display: grid;
   place-items: center;
 }
+.vid .th .rmx {
+  position: absolute;
+  right: 4px;
+  top: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 11px;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+  z-index: 2;
+}
+.vid:hover .th .rmx { opacity: 1; }
+.vid .th .rmx:hover { background: #c0392b; }
+.vid .th .secbox {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 9px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.72);
+  border-radius: 4px;
+  padding: 1px 4px;
+  z-index: 2;
+}
+.vid .th .secin {
+  width: 24px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: right;
+  padding: 0;
+  -moz-appearance: textfield;
+}
+.vid .th .secin::-webkit-outer-spin-button,
+.vid .th .secin::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .vid .t {
   font-size: 11px;
   margin-top: 5px;

@@ -32,6 +32,16 @@ def create_playlist(body: CreateBody, request: Request) -> dict:
     return {"id": pid}
 
 
+class ReorderBody(BaseModel):
+    ids: list[int]
+
+
+@router.post("/reorder")
+def reorder(body: ReorderBody, request: Request) -> dict:
+    playlist_repo.reorder_playlists(_db(request), body.ids)
+    return {"ok": True}
+
+
 @router.get("/{playlist_id}")
 def get_playlist(playlist_id: int, request: Request) -> dict:
     pl = playlist_repo.get_playlist(_db(request), playlist_id)

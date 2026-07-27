@@ -71,6 +71,22 @@ def test_deleting_media_cleans_folder_membership(tmp_path):
     assert fr.content_ids(c, fid) == ["p1"]
 
 
+def test_reorder_folders(tmp_path):
+    c = _c(tmp_path)
+    a = fr.create_folder(c, "A")
+    b = fr.create_folder(c, "B")
+    d = fr.create_folder(c, "C")
+    fr.reorder_folders(c, [d, b, a])  # C, B, A 순
+    assert [f["name"] for f in fr.list_folders(c)] == ["C", "B", "A"]
+
+
+def test_create_folder_orders_by_creation(tmp_path):
+    c = _c(tmp_path)
+    fr.create_folder(c, "A")
+    fr.create_folder(c, "B")
+    assert [f["name"] for f in fr.list_folders(c)] == ["A", "B"]
+
+
 def test_get_folder_shape(tmp_path):
     c = _c(tmp_path)
     _seed(c)

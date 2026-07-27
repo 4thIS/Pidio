@@ -39,21 +39,16 @@ def probe_duration(path: str) -> float | None:
 def make_thumbnail(src: str, dst: str, at_sec: float = 1.0) -> bool:
     """src 의 at_sec 위치 프레임(사진이면 그 이미지)을 축소해 dst(jpg)로 저장.
 
+    at_sec<=0 이면 -ss(탐색)를 생략한다 — 정지 이미지(사진)는 1초 탐색 시
+    프레임을 못 뽑아 실패하므로 사진 썸네일은 at_sec=0 으로 호출해야 한다.
     성공 시 True, 실패 시 False.
     """
+    cmd = ["ffmpeg", "-y"]
+    if at_sec > 0:
+        cmd += ["-ss", str(at_sec)]
+    cmd += ["-i", src, "-frames:v", "1", "-vf", f"scale={_THUMB_WIDTH}:-1", dst]
     try:
-        proc = subprocess.run(
-            [
-                "ffmpeg", "-y",
-                "-ss", str(at_sec),
-                "-i", src,
-                "-frames:v", "1",
-                "-vf", f"scale={_THUMB_WIDTH}:-1",
-                dst,
-            ],
-            capture_output=True,
-            text=True,
-        )
+        proc = subprocess.run(cmd, capture_output=True, text=True)
     except FileNotFoundError:
         return False
     return proc.returncode == 0 and os.path.exists(dst) and os.path.getsize(dst) > 0

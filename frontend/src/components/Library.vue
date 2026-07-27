@@ -5,7 +5,7 @@ import MediaCard from './MediaCard.vue'
 import { media as mediaApi, play as playApi, player as playerApi, folders as folderApi } from '../api.js'
 import { MOCK_MEDIA } from '../mock.js'
 
-const emit = defineEmits(['media-deleted'])
+const emit = defineEmits(['media-deleted', 'upload-files'])
 
 const TYPE_TABS = [
   { k: 'all', label: '전체' },
@@ -81,6 +81,46 @@ function toggle(id) {
 function clearSel() {
   selected.clear()
 }
+const selectedIds = computed(() => [...selected])
+
+// 사진 표시시간 저장(#4)
+async function setPhotoSec(id, sec) {
+  const it = items.value.find((m) => m.content_id === id)
+  try {
+    await mediaApi.setPhotoSec(id, sec)
+    if (it) it.photo_sec = sec
+  } catch {
+    if (it) it.photo_sec = sec
+    if (!usingMock.value) notify('시간 저장에 실패했습니다.')
+  }
+}
+
+// ---- 업로드 드롭존(라이브러리 영역 한정, #6) ----
+const uploadOver = ref(false)
+let upDepth = 0
+function hasFiles(e) {
+  return [...(e.dataTransfer?.types || [])].includes('Files')
+}
+function onLibDragEnter(e) {
+  if (!hasFiles(e)) return
+  upDepth++
+  uploadOver.value = true
+}
+function onLibDragOver(e) {
+  if (hasFiles(e)) e.preventDefault()
+}
+function onLibDragLeave() {
+  upDepth = Math.max(0, upDepth - 1)
+  if (upDepth === 0) uploadOver.value = false
+}
+function onLibDrop(e) {
+  if (!hasFiles(e)) return
+  e.preventDefault()
+  upDepth = 0
+  uploadOver.value = false
+  const files = [...(e.dataTransfer?.files || [])]
+  if (files.length) emit('upload-files', files)
+}
 
 async function saveTitle(id, title) {
   const it = items.value.find((m) => m.content_id === id)
@@ -151,9 +191,14 @@ async function createFolder() {
   }
 }
 
-// ---- 드래그로 폴더에 추가 ----
+// ---- 폴더 탭: 미디어 드롭(추가) + 폴더 드롭(순서변경) 겸용 ----
+function onFolderTabDragStart(e, idx) {
+  e.dataTransfer.setData('application/x-pidio-folder', String(idx))
+  e.dataTransfer.effectAllowed = 'move'
+}
 function onFolderDragOver(e, f) {
-  if ([...(e.dataTransfer?.types || [])].includes('application/x-pidio-media')) {
+  const t = [...(e.dataTransfer?.types || [])]
+  if (t.includes('application/x-pidio-media') || t.includes('application/x-pidio-folder')) {
     e.preventDefault()
     dragFolderId.value = f.id
   }
@@ -161,17 +206,29 @@ function onFolderDragOver(e, f) {
 function onFolderDrop(e, f) {
   dragFolderId.value = null
   const media = e.dataTransfer.getData('application/x-pidio-media')
-  if (!media) return
-  e.preventDefault()
-  const { content_id } = JSON.parse(media)
-  folderApi
-    .addItems(f.id, [content_id])
-    .then(async () => {
-      await loadFolders()
-      if (activeFolder.value === f.id) await selectTab('folder:' + f.id) // 현재 보고 있으면 갱신
-      notify(`"${f.name}"에 추가됨.`)
-    })
-    .catch(() => notify('추가하지 못했습니다.'))
+  const fold = e.dataTransfer.getData('application/x-pidio-folder')
+  if (media) {
+    e.preventDefault()
+    const { content_ids } = JSON.parse(media)
+    folderApi
+      .addItems(f.id, content_ids)
+      .then(async () => {
+        await loadFolders()
+        if (activeFolder.value === f.id) await selectTab('folder:' + f.id)
+        notify(`"${f.name}"에 ${content_ids.length}개 추가됨.`)
+      })
+      .catch(() => notify('추가하지 못했습니다.'))
+  } else if (fold !== '') {
+    e.preventDefault()
+    const from = Number(fold)
+    const to = foldersList.value.findIndex((x) => x.id === f.id)
+    if (from === to || from < 0 || to < 0) return
+    const arr = [...foldersList.value]
+    const [moved] = arr.splice(from, 1)
+    arr.splice(to, 0, moved)
+    foldersList.value = arr
+    folderApi.reorder(arr.map((x) => x.id)).catch(() => loadFolders())
+  }
 }
 
 // ---- 폴더 삭제(폴더만 / 파일까지) ----
@@ -211,7 +268,13 @@ function notify(msg) {
 </script>
 
 <template>
-  <section class="lib">
+  <section
+    class="lib"
+    @dragenter="onLibDragEnter"
+    @dragover="onLibDragOver"
+    @dragleave="onLibDragLeave"
+    @drop="onLibDrop"
+  >
     <div class="head">
       <h3>전체 목록</h3>
       <span class="src">USB 라이브러리</span>
@@ -228,13 +291,16 @@ function notify(msg) {
       >
         {{ t.label }}
       </button>
-      <button class="tab addf" @click="createFolder" title="새 폴더 만들기">＋ 폴더</button>
+
+      <span class="tabdiv"></span>
 
       <button
-        v-for="f in foldersList"
+        v-for="(f, fi) in foldersList"
         :key="'f' + f.id"
         class="tab folder"
         :class="{ on: activeFolder === f.id, drop: dragFolderId === f.id }"
+        draggable="true"
+        @dragstart="onFolderTabDragStart($event, fi)"
         @click="selectTab('folder:' + f.id)"
         @dragover="onFolderDragOver($event, f)"
         @dragleave="dragFolderId = null"
@@ -243,6 +309,8 @@ function notify(msg) {
         📁 {{ f.name }} <span class="fc">{{ f.item_count }}</span>
         <span class="fx" @click.stop="askDeleteFolder(f)" title="폴더 삭제">✕</span>
       </button>
+
+      <button class="tab addf" @click="createFolder" title="새 폴더 만들기">＋ 폴더</button>
     </div>
 
     <p v-if="activeFolder !== null" class="fhint">
@@ -269,13 +337,20 @@ function notify(msg) {
         :key="m.content_id"
         :item="m"
         :selected="selected.has(m.content_id)"
+        :selected-ids="selectedIds"
         :delete-icon="activeFolder !== null ? '⊘' : '🗑'"
         :delete-title="activeFolder !== null ? '폴더에서 빼기' : '삭제'"
         @toggle="toggle"
         @save-title="saveTitle"
         @add-queue="addToQueue"
         @delete="deleteMedia"
+        @set-photo-sec="setPhotoSec"
       />
+    </div>
+
+    <!-- 업로드 드롭 오버레이(라이브러리 영역 한정) -->
+    <div v-if="uploadOver" class="up-ov">
+      <div class="up-in">📥 여기에 놓으면 업로드 (동영상·사진·음악)</div>
     </div>
 
     <!-- 폴더 삭제 다이얼로그 -->
@@ -294,7 +369,19 @@ function notify(msg) {
 </template>
 
 <style scoped>
-.lib { padding: 16px; }
+.lib { padding: 16px; position: relative; }
+.up-ov {
+  position: absolute;
+  inset: 8px;
+  border: 2.5px dashed color-mix(in srgb, var(--accent) 75%, #fff);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent) 16%, rgba(10, 13, 15, 0.72));
+  display: grid;
+  place-items: center;
+  z-index: 15;
+  pointer-events: none;
+}
+.up-in { font-size: 14px; font-weight: 700; color: #fff; }
 .head {
   display: flex;
   align-items: baseline;
@@ -342,6 +429,12 @@ function notify(msg) {
   border-color: var(--accent);
   color: #fff;
   font-weight: 600;
+}
+.tabdiv {
+  width: 1px;
+  align-self: stretch;
+  background: var(--bd);
+  margin: 2px 3px;
 }
 .tab.addf {
   border-style: dashed;

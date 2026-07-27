@@ -1,7 +1,7 @@
 <script setup>
 // 앱 셸: 시작 시 세션 확인 → 로그인 화면 또는 메인.
 // 메인 진입 시 SSE(/events) 구독. 업로드는 화면 어디서나 드롭 가능.
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { store, connectEvents, disconnectEvents } from './store.js'
 import { auth } from './api.js'
 import Login from './components/Login.vue'
@@ -32,6 +32,21 @@ function closeDetail() {
   detailId.value = null
   detailJustCreated.value = false
 }
+function onUploadFiles(files) {
+  uploader.value?.startFiles(files)
+}
+// 라이브러리 밖에 파일을 떨어뜨려도 브라우저가 파일을 열지 않도록 전역 가드(업로드는 라이브러리에서만).
+function guardFileDrag(e) {
+  if ([...(e.dataTransfer?.types || [])].includes('Files')) e.preventDefault()
+}
+onMounted(() => {
+  window.addEventListener('dragover', guardFileDrag)
+  window.addEventListener('drop', guardFileDrag)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('dragover', guardFileDrag)
+  window.removeEventListener('drop', guardFileDrag)
+})
 const uploader = ref(null)
 const libKey = ref(0) // 업로드 완료 시 목록 새로고침
 const plKey = ref(0)  // 미디어 삭제 시 플레이리스트 목록 새로고침
@@ -78,13 +93,13 @@ async function logout() {
     </div>
 
     <NowPlaying />
-    <PlayQueue />
+    <PlayQueue @saved="plKey++" />
 
     <Settings v-if="showSettings" @close="showSettings = false" />
 
     <div v-else class="rest">
       <Playlists :key="plKey" @open="openDetail" />
-      <Library :key="libKey" @media-deleted="plKey++" />
+      <Library :key="libKey" @media-deleted="plKey++" @upload-files="onUploadFiles" />
     </div>
 
     <!-- 플리 상세: 원래 화면 위에 박스로 열림 -->

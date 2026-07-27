@@ -25,6 +25,24 @@ def _make_playlist(c, name, cid="v1", repeat="off"):
     return pid
 
 
+def test_save_queue_as_playlist(tmp_path):
+    from app.domain.contracts import Block
+    svc, c, player, v, m = _svc(tmp_path)
+    mr.upsert_media(c, "v1", "video", "a.mp4", "videos/a.mp4", duration=10)
+    mr.upsert_media(c, "p1", "photo", "1.jpg", "pictures/1.jpg")
+    player.play_blocks(
+        [Block(kind="video", video_id="v1"),
+         Block(kind="slideshow", music_id=None, photos=[("p1", 4.0)])],
+        "전체 선택",
+    )
+    pid = svc.save_queue_as_playlist("내 목록")
+    pl = pr.get_playlist(c, pid)
+    assert pl["name"] == "내 목록"
+    assert pl["blocks"][0] == {"kind": "video", "video_id": "v1"}
+    assert pl["blocks"][1]["kind"] == "slideshow"
+    assert pl["blocks"][1]["photos"][0]["photo_id"] == "p1"
+
+
 def test_play_playlist_loads_blocks_with_meta(tmp_path):
     svc, c, player, v, m = _svc(tmp_path)
     pid = _make_playlist(c, "행사", repeat="all")

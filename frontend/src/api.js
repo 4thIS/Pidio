@@ -61,6 +61,8 @@ export const media = {
   list: (type = 'all') => api(`/api/media?type=${encodeURIComponent(type)}`),
   patchTitle: (id, custom_title) =>
     api(`/api/media/${id}`, { method: 'PATCH', body: { custom_title } }),
+  setPhotoSec: (id, sec) =>
+    api(`/api/media/${id}/photo_sec`, { method: 'PATCH', body: { sec } }),
   remove: (id) => api(`/api/media/${id}`, { method: 'DELETE' }),
 }
 
@@ -79,6 +81,7 @@ export const playlists = {
   remove: (id) => api(`/api/playlists/${id}`, { method: 'DELETE' }),
   play: (id) => api(`/api/playlists/${id}/play`, { method: 'POST' }),
   add: (id, contentIds) => api(`/api/playlists/${id}/add`, { method: 'POST', body: { content_ids: contentIds } }),
+  reorder: (ids) => api('/api/playlists/reorder', { method: 'POST', body: { ids } }),
 }
 
 // 폴더 (전체목록 수동 그룹)
@@ -92,6 +95,7 @@ export const folders = {
     api(`/api/folders/${id}/items`, { method: 'POST', body: { content_ids: contentIds } }),
   removeItem: (id, contentId) =>
     api(`/api/folders/${id}/items/${contentId}`, { method: 'DELETE' }),
+  reorder: (ids) => api('/api/folders/reorder', { method: 'POST', body: { ids } }),
 }
 
 // 설정 (Phase 8/Task 8.5)
@@ -114,6 +118,9 @@ export const schedule = {
 export const player = {
   queue: () => api('/api/player/queue'),
   queueAdd: (contentIds) => api('/api/player/queue/add', { method: 'POST', body: { content_ids: contentIds } }),
+  queueRemove: (index) => api('/api/player/queue/remove', { method: 'POST', body: { index } }),
+  setPhotoSec: (index, sec) => api('/api/player/queue/photo_sec', { method: 'POST', body: { index, sec } }),
+  saveQueue: (name) => api('/api/player/queue/save', { method: 'POST', body: { name } }),
   /** action ∈ next|prev|pause|resume|stop|resume_auto */
   action: (name) => api(`/api/player/${name}`, { method: 'POST' }),
   jump: (index) => api('/api/player/jump', { method: 'POST', body: { index } }),

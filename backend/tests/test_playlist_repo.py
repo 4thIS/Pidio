@@ -33,6 +33,31 @@ def test_selection_to_blocks_by_type(tmp_path):
     assert blocks[2].photos == []
 
 
+# ---- 정렬/사진시간 ----
+
+def test_reorder_playlists(tmp_path):
+    c = _c(tmp_path)
+    a = pr.create_playlist(c, "A")
+    b = pr.create_playlist(c, "B")
+    d = pr.create_playlist(c, "C")
+    pr.reorder_playlists(c, [d, a, b])  # C, A, B 순
+    assert [p["name"] for p in pr.list_playlists(c)] == ["C", "A", "B"]
+
+
+def test_create_playlist_orders_by_creation(tmp_path):
+    c = _c(tmp_path)
+    pr.create_playlist(c, "A")
+    pr.create_playlist(c, "B")
+    assert [p["name"] for p in pr.list_playlists(c)] == ["A", "B"]
+
+
+def test_set_photo_sec(tmp_path):
+    c = _c(tmp_path)
+    _seed_media(c)
+    mr.set_photo_sec(c, "p1", 8.0)
+    assert mr.get_media(c, "p1")["default_photo_sec"] == 8.0
+
+
 # ---- 플레이리스트 CRUD + 블록 왕복 ----
 
 def test_create_and_get_empty(tmp_path):

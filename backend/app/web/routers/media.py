@@ -31,6 +31,16 @@ def patch_media(content_id: str, body: PatchBody, request: Request) -> dict:
     return {"ok": True}
 
 
+class PhotoSecBody(BaseModel):
+    sec: float
+
+
+@router.patch("/{content_id}/photo_sec")
+def patch_photo_sec(content_id: str, body: PhotoSecBody, request: Request) -> dict:
+    media_repo.set_photo_sec(request.app.state.deps.db, content_id, body.sec)
+    return {"ok": True}
+
+
 @router.delete("/{content_id}")
 def remove_media(content_id: str, request: Request) -> dict:
     deps = request.app.state.deps

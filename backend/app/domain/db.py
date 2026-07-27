@@ -19,4 +19,16 @@ def connect(path: str) -> sqlite3.Connection:
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(_SCHEMA.read_text(encoding="utf-8"))
+    _migrate(conn)
     conn.commit()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """기존 DB에 없는 컬럼을 추가(재실행 안전). CREATE IF NOT EXISTS로는 컬럼 추가 불가."""
+    def cols(table):
+        return {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+    if "sort_order" not in cols("playlists"):
+        conn.execute("ALTER TABLE playlists ADD COLUMN sort_order INTEGER DEFAULT 0")
+    if "sort_order" not in cols("folders"):
+        conn.execute("ALTER TABLE folders ADD COLUMN sort_order INTEGER DEFAULT 0")

@@ -80,6 +80,14 @@ def set_custom_title(conn, content_id, title) -> None:
     conn.commit()
 
 
+def set_photo_sec(conn, content_id, sec) -> None:
+    """사진 기본 표시시간(초) 갱신."""
+    conn.execute(
+        "UPDATE media SET default_photo_sec=? WHERE content_id=?", (float(sec), content_id)
+    )
+    conn.commit()
+
+
 def delete_media(conn, content_id) -> None:
     """미디어 DB 행 + 이를 참조하는 플리 블록/사진 제거(파일 삭제는 웹 계층)."""
     conn.execute("DELETE FROM block_photos WHERE photo_id=?", (content_id,))

@@ -26,6 +26,8 @@ def player_queue(request: Request) -> dict:
             "thumb_url": (f"/thumb/{it['content_id']}"
                           if m and m["media_type"] != "music" else None),
             "kind": it["kind"],
+            "media_type": m["media_type"] if m else None,
+            "photo_sec": it["sec"],
             "current": it["current"],
         })
     src = None
@@ -119,6 +121,29 @@ def queue_remove(body: RemoveBody, request: Request) -> dict:
     request.app.state.deps.player.remove(body.index)
     _publish(request)
     return {"ok": True}
+
+
+class PhotoSecBody(BaseModel):
+    index: int
+    sec: float
+
+
+@router.post("/player/queue/photo_sec")
+def queue_photo_sec(body: PhotoSecBody, request: Request) -> dict:
+    request.app.state.deps.player.set_photo_duration(body.index, body.sec)
+    _publish(request)
+    return {"ok": True}
+
+
+class SaveQueueBody(BaseModel):
+    name: str = "새 목록"
+
+
+@router.post("/player/queue/save")
+def queue_save(body: SaveQueueBody, request: Request) -> dict:
+    deps = request.app.state.deps
+    pid = deps.service.save_queue_as_playlist(body.name.strip() or "새 목록")
+    return {"id": pid}
 
 
 # ---- 단순 동작 (마지막 선언) ----

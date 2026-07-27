@@ -27,6 +27,16 @@ def create_folder(body: CreateBody, request: Request) -> dict:
     return {"id": fid}
 
 
+class ReorderBody(BaseModel):
+    ids: list[int]
+
+
+@router.post("/reorder")
+def reorder(body: ReorderBody, request: Request) -> dict:
+    folder_repo.reorder_folders(request.app.state.deps.db, body.ids)
+    return {"ok": True}
+
+
 @router.get("/{folder_id}")
 def get_folder(folder_id: int, request: Request) -> dict:
     f = folder_repo.get_folder(request.app.state.deps.db, folder_id)

@@ -10,6 +10,7 @@ def media_out(row: dict) -> dict:
         "media_type": row["media_type"],
         "title": row["custom_title"] or row["original_name"],
         "duration": row["duration"],
+        "photo_sec": row["default_photo_sec"] if row["media_type"] == "photo" else None,
         "thumb_url": f"/thumb/{row['content_id']}" if row["media_type"] != "music" else None,
         "available": bool(row["available"]),
     }

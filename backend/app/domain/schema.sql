@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS playlists (
   name        TEXT NOT NULL,
   repeat_mode TEXT DEFAULT 'off',       -- 'off'(순차1회) | 'all' | 'one'  ※ 블록 단위
   shuffle     INTEGER DEFAULT 0,        -- 블록 순서 셔플
+  sort_order  INTEGER DEFAULT 0,        -- 목록 표시 순서(드래그 재정렬)
   created_at  TEXT,
   updated_at  TEXT
 );
@@ -70,6 +71,7 @@ CREATE TABLE IF NOT EXISTS settings (
 CREATE TABLE IF NOT EXISTS folders (
   id         INTEGER PRIMARY KEY,
   name       TEXT NOT NULL,
+  sort_order INTEGER DEFAULT 0,         -- 탭 표시 순서(드래그 재정렬)
   created_at TEXT
 );
 
