@@ -67,11 +67,15 @@ async function selectTab(k) {
   }
 }
 
-// 정렬 토글: 추가순 → 오름차순 → 내림차순 (#5)
-const SORTS = ['added', 'asc', 'desc']
-const sortLabels = { added: '추가순', asc: '오름차순', desc: '내림차순' }
-const sortIcons = { added: '↕', asc: '↑', desc: '↓' }
-const sortMode = ref('added')
+// 정렬 토글: 추가순↑ → 추가순↓ → 이름순↑ → 이름순↓
+const SORTS = ['added_asc', 'added_desc', 'name_asc', 'name_desc']
+const sortLabels = {
+  added_asc: '↑ 추가순',
+  added_desc: '↓ 추가순',
+  name_asc: '↑ 이름순',
+  name_desc: '↓ 이름순',
+}
+const sortMode = ref('added_asc')
 function cycleSort() {
   sortMode.value = SORTS[(SORTS.indexOf(sortMode.value) + 1) % SORTS.length]
 }
@@ -85,9 +89,12 @@ const filtered = computed(() => {
     base = tab.value === 'all' ? items.value : items.value.filter((m) => m.media_type === tab.value)
   }
   const arr = [...base]
-  if (sortMode.value === 'asc') arr.sort((a, b) => a.title.localeCompare(b.title))
-  else if (sortMode.value === 'desc') arr.sort((a, b) => b.title.localeCompare(a.title))
-  else arr.sort((a, b) => (a.first_seen || '').localeCompare(b.first_seen || '')) // 추가순(오래된→최근)
+  const name = (m) => m.title || ''
+  const added = (m) => m.first_seen || ''
+  if (sortMode.value === 'name_asc') arr.sort((a, b) => name(a).localeCompare(name(b)))
+  else if (sortMode.value === 'name_desc') arr.sort((a, b) => name(b).localeCompare(name(a)))
+  else if (sortMode.value === 'added_desc') arr.sort((a, b) => added(b).localeCompare(added(a)))
+  else arr.sort((a, b) => added(a).localeCompare(added(b))) // added_asc(오래된→최근)
   return arr
 })
 
@@ -97,7 +104,9 @@ function toggle(id) {
 function clearSel() {
   selected.clear()
 }
-const selectedIds = computed(() => [...selected])
+// 다중선택 드래그용: 배열을 prop으로 넘기면 선택 변경 시 전체 카드가 리렌더됨.
+// 안정적인 함수(참조 불변)로 넘겨 드래그 시작 순간에만 읽게 해 리렌더를 막는다.
+const getSelected = () => [...selected]
 
 // 사진 표시시간 저장(#4)
 async function setPhotoSec(id, sec) {
@@ -285,7 +294,7 @@ function notify(msg) {
       <span class="src">USB 라이브러리</span>
       <span v-if="selected.size" class="selcnt">{{ selected.size }}개 선택됨</span>
       <span v-if="usingMock" class="mock">샘플 데이터 · 서버 미연결</span>
-      <button class="sortbtn" @click="cycleSort" title="정렬 순서 바꾸기">{{ sortIcons[sortMode] }} {{ sortLabels[sortMode] }}</button>
+      <button class="sortbtn" @click="cycleSort" title="정렬 순서 바꾸기">{{ sortLabels[sortMode] }}</button>
     </div>
 
     <div class="tabs">
@@ -336,7 +345,7 @@ function notify(msg) {
         :key="m.content_id"
         :item="m"
         :selected="selected.has(m.content_id)"
-        :selected-ids="selectedIds"
+        :get-selected="getSelected"
         :delete-icon="activeFolder !== null ? '⊘' : '🗑'"
         :delete-title="activeFolder !== null ? '폴더에서 빼기' : '삭제'"
         @toggle="toggle"

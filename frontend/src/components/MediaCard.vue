@@ -8,7 +8,8 @@ import { formatTime } from '../format.js'
 const props = defineProps({
   item: Object,
   selected: Boolean,
-  selectedIds: { type: Array, default: () => [] },
+  // 선택된 content_id 배열을 반환하는 함수(참조 불변) — 드래그 시작 때만 호출.
+  getSelected: { type: Function, default: () => () => [] },
   deleteIcon: { type: String, default: '🗑' },
   deleteTitle: { type: String, default: '삭제' },
 })
@@ -55,10 +56,8 @@ const thumbSrc = computed(() =>
 
 function onDragStart(e) {
   // 이 카드가 선택되어 있으면 선택된 전체를, 아니면 이 카드만 드래그(다중이동)
-  const ids =
-    props.selected && props.selectedIds.length > 1
-      ? [...props.selectedIds]
-      : [props.item.content_id]
+  const sel = props.getSelected()
+  const ids = props.selected && sel.length > 1 ? sel : [props.item.content_id]
   e.dataTransfer.setData(
     'application/x-pidio-media',
     JSON.stringify({ content_ids: ids, media_type: props.item.media_type }),

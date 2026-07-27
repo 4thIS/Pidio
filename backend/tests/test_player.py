@@ -364,6 +364,17 @@ def test_refresh_position_reads_from_video_mpv():
     assert st.position_sec == 5.0 and st.duration_sec == 20.0
 
 
+def test_refresh_position_photo_uses_display_sec():
+    # 사진 블록: 진행바 길이는 표시시간(초), 위치는 경과(벽시계, 방금 로드→0 근처)
+    v, m = FakeMpv(), FakeMpv()
+    p = Player(v, m, "/standby.png", "/music.png")
+    p.play_blocks([Block(kind="slideshow", photos=[("p1", 8.0)])], "s")
+    p.refresh_position()
+    st = p.get_state()
+    assert st.duration_sec == 8.0
+    assert 0.0 <= st.position_sec <= 8.0
+
+
 def test_refresh_position_none_is_zero():
     v, m = FakeMpv(), FakeMpv()   # properties 비어있음(time-pos None)
     p = Player(v, m, "/standby.png", "/music.png")

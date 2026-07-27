@@ -76,7 +76,8 @@ function onDrop(e) {
   if (media) {
     e.preventDefault()
     const { content_ids } = JSON.parse(media)
-    playerApi.queueAdd(content_ids).then(reload).catch(() => {})
+    // 추가만 요청 — 큐 갱신은 SSE(queue_len 변경)로 자동 재시드(중복 fetch 제거로 지연 감소)
+    playerApi.queueAdd(content_ids).catch(() => {})
   } else if (pl) {
     e.preventDefault()
     const { id } = JSON.parse(pl)

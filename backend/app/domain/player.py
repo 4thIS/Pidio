@@ -7,6 +7,7 @@
 mpv/USB 없이 FakeMpv(contracts.MpvClient) 주입으로 테스트된다.
 """
 import random
+import time
 
 from .contracts import PlayerState
 
@@ -28,6 +29,7 @@ class Player:
         self.position_sec = 0.0
         self.duration_sec = 0.0
         self._photo_idx = 0
+        self._photo_started = None  # 현재 사진 표시 시작 시각(진행바용, monotonic)
         self.on_state_change = on_state_change   # 상태 변경 콜백(SSE 방송용)
         self._resolve = resolve_path or (lambda cid: cid)  # content_id → 실제 파일 경로
         self._resolve_title = resolve_title or (lambda cid: cid)  # content_id → 표시 제목
@@ -316,6 +318,7 @@ class Player:
             if b.photos:
                 pid, sec = b.photos[0]
                 self.v.loadfile(self._resolve(pid), {"image-display-duration": sec})
+                self._photo_started = time.monotonic()
             else:
                 self.v.loadfile(
                     self.music_screen_image, {"image-display-duration": "inf"}
@@ -327,7 +330,28 @@ class Player:
         self.m.stop()
 
     def refresh_position(self):
-        """현재 재생 위치/길이를 화면 mpv에서 읽어 캐시(진행바용). 이미지/유휴면 0."""
+        """현재 재생 위치/길이를 진행바용으로 캐시.
+
+        - 사진: 표시시간(블록에 저장된 초)을 길이로, 경과(벽시계)를 위치로 — mpv가
+          이미지의 time-pos/duration 을 안 주는 경우가 많아 벽시계로 계산.
+        - 음악만(음악화면): 음악 채널의 재생 위치/길이.
+        - 동영상: 화면 mpv 의 time-pos/duration.
+        """
+        b = self._current_block()
+        if b is not None and b.kind == "slideshow":
+            if b.photos:
+                idx = min(self._photo_idx, len(b.photos) - 1)
+                sec = float(b.photos[idx][1] or 0)
+                started = self._photo_started if self._photo_started is not None else time.monotonic()
+                self.duration_sec = sec
+                self.position_sec = max(0.0, min(time.monotonic() - started, sec))
+                return
+            if b.music_id:
+                pos = self.m.get_property("time-pos")
+                dur = self.m.get_property("duration")
+                self.position_sec = float(pos) if pos is not None else 0.0
+                self.duration_sec = float(dur) if dur is not None else 0.0
+                return
         pos = self.v.get_property("time-pos")
         dur = self.v.get_property("duration")
         self.position_sec = float(pos) if pos is not None else 0.0
@@ -357,6 +381,7 @@ class Player:
             self._photo_idx += 1
             pid, sec = b.photos[self._photo_idx]
             self.v.loadfile(self._resolve(pid), {"image-display-duration": sec})
+            self._photo_started = time.monotonic()
         else:
             self._advance()
         self._notify()
