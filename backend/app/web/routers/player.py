@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.domain import media_repo, playlist_repo
+from app.domain.service import _block_to_dict
 from app.web.auth import require_session
 
 router = APIRouter(prefix="/api", tags=["player"], dependencies=[Depends(require_session)])
@@ -144,6 +145,14 @@ def queue_save(body: SaveQueueBody, request: Request) -> dict:
     deps = request.app.state.deps
     pid = deps.service.save_queue_as_playlist(body.name.strip() or "새 목록")
     return {"id": pid}
+
+
+@router.get("/player/queue/blocks")
+def queue_blocks(request: Request) -> dict:
+    """현재 큐를 블록 구조로 반환(타임라인 에디터 시드용)."""
+    p = request.app.state.deps.player
+    return {"blocks": [_block_to_dict(b) for b in p.queue],
+            "repeat_mode": p.repeat, "shuffle": bool(p.shuffle)}
 
 
 # ---- 단순 동작 (마지막 선언) ----

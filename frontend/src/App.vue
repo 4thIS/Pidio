@@ -16,6 +16,7 @@ import Settings from './components/Settings.vue'
 // 간단 뷰 전환: 메인 위에 플레이리스트 상세(모달) ↔ 설정 (라우터 없이)
 const detailId = ref(null)
 const detailJustCreated = ref(false)
+const queueEditor = ref(false) // 현재 재생목록 편집 모달
 const showSettings = ref(false)
 
 function openDetail(payload) {
@@ -31,6 +32,7 @@ function openDetail(payload) {
 function closeDetail() {
   detailId.value = null
   detailJustCreated.value = false
+  queueEditor.value = false
 }
 function onUploadFiles(files) {
   uploader.value?.startFiles(files)
@@ -93,7 +95,7 @@ async function logout() {
     </div>
 
     <NowPlaying />
-    <PlayQueue @saved="plKey++" />
+    <PlayQueue @edit="queueEditor = true" />
 
     <Settings v-if="showSettings" @close="showSettings = false" />
 
@@ -102,11 +104,12 @@ async function logout() {
       <Library :key="libKey" @media-deleted="plKey++" @upload-files="onUploadFiles" />
     </div>
 
-    <!-- 플리 상세: 원래 화면 위에 박스로 열림 -->
+    <!-- 플리 상세/재생목록 편집: 원래 화면 위에 박스로 열림(타임라인 에디터) -->
     <Transition name="modal">
       <PlaylistDetail
-        v-if="detailId !== null"
-        :id="detailId"
+        v-if="detailId !== null || queueEditor"
+        :id="queueEditor ? null : detailId"
+        :from-queue="queueEditor"
         :just-created="detailJustCreated"
         @close="closeDetail"
         @changed="plKey++"

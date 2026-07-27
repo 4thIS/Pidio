@@ -6,7 +6,7 @@ import { store } from '../store.js'
 import { player as playerApi, playlists as plApi } from '../api.js'
 import { formatTime } from '../format.js'
 
-const emit = defineEmits(['saved'])
+const emit = defineEmits(['edit'])
 
 const items = ref([])
 const source = ref(null)
@@ -45,15 +45,10 @@ function flash(msg) {
   nt = setTimeout(() => (notice.value = ''), 2600)
 }
 
-// ---- 새 플레이리스트로 저장(#1) ----
-function saveQueue() {
+// ---- 편집 · 새 플리로 저장(#1) → 타임라인 에디터 열기 ----
+function openEditor() {
   if (!items.value.length) return
-  const name = (prompt('새 플레이리스트 이름', source.value?.name ? source.value.name + ' 복사' : '재생목록') || '').trim()
-  if (!name) return
-  playerApi
-    .saveQueue(name)
-    .then(() => { emit('saved'); flash(`"${name}"으로 저장했습니다.`) })
-    .catch(() => flash('저장에 실패했습니다.'))
+  emit('edit')
 }
 
 // ---- 항목 삭제(#3) ----
@@ -138,8 +133,8 @@ function coverStyle(c) {
       <span class="pqtitle">재생목록</span>
       <span v-if="notice" class="pqnotice">{{ notice }}</span>
       <span class="grow"></span>
-      <button class="saveq" :disabled="!items.length" @click="saveQueue" title="현재 재생목록을 새 플레이리스트로 저장">
-        💾 새 플리로 저장
+      <button class="saveq" :disabled="!items.length" @click="openEditor" title="현재 재생목록을 편집하고 새 플레이리스트로 저장">
+        🎬 편집 · 새 플리로 저장
       </button>
     </div>
 

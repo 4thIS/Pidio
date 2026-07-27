@@ -117,6 +117,7 @@ export const schedule = {
 // 재생 제어 호출 (백엔드 라우터는 Phase 8/Task 8.4 에서 구현 → 그 전엔 404)
 export const player = {
   queue: () => api('/api/player/queue'),
+  queueBlocks: () => api('/api/player/queue/blocks'),
   queueAdd: (contentIds) => api('/api/player/queue/add', { method: 'POST', body: { content_ids: contentIds } }),
   queueRemove: (index) => api('/api/player/queue/remove', { method: 'POST', body: { index } }),
   setPhotoSec: (index, sec) => api('/api/player/queue/photo_sec', { method: 'POST', body: { index, sec } }),
