@@ -2,7 +2,7 @@
 // D-3 전체 목록 — 타입 탭 · 폴더(수동 그룹) · 체크박스 다중선택 · 넷플릭스 호버 미리보기.
 import { ref, reactive, computed, onMounted } from 'vue'
 import MediaCard from './MediaCard.vue'
-import { media as mediaApi, play as playApi, player as playerApi, folders as folderApi } from '../api.js'
+import { media as mediaApi, player as playerApi, folders as folderApi } from '../api.js'
 import { MOCK_MEDIA } from '../mock.js'
 
 const emit = defineEmits(['media-deleted', 'upload-files'])
@@ -67,12 +67,28 @@ async function selectTab(k) {
   }
 }
 
+// 정렬 토글: 추가순 → 오름차순 → 내림차순 (#5)
+const SORTS = ['added', 'asc', 'desc']
+const sortLabels = { added: '추가순', asc: '오름차순', desc: '내림차순' }
+const sortIcons = { added: '↕', asc: '↑', desc: '↓' }
+const sortMode = ref('added')
+function cycleSort() {
+  sortMode.value = SORTS[(SORTS.indexOf(sortMode.value) + 1) % SORTS.length]
+}
+
 const filtered = computed(() => {
+  let base
   if (activeFolder.value !== null) {
     const set = new Set(folderIds.value)
-    return items.value.filter((m) => set.has(m.content_id))
+    base = items.value.filter((m) => set.has(m.content_id))
+  } else {
+    base = tab.value === 'all' ? items.value : items.value.filter((m) => m.media_type === tab.value)
   }
-  return tab.value === 'all' ? items.value : items.value.filter((m) => m.media_type === tab.value)
+  const arr = [...base]
+  if (sortMode.value === 'asc') arr.sort((a, b) => a.title.localeCompare(b.title))
+  else if (sortMode.value === 'desc') arr.sort((a, b) => b.title.localeCompare(a.title))
+  else arr.sort((a, b) => (a.first_seen || '').localeCompare(b.first_seen || '')) // 추가순(오래된→최근)
+  return arr
 })
 
 function toggle(id) {
@@ -133,14 +149,6 @@ async function saveTitle(id, title) {
   }
 }
 
-async function playSelection() {
-  try {
-    await playApi.selection([...selected], {})
-    notify(`${selected.size}개 재생을 요청했습니다.`)
-  } catch {
-    notify('재생 요청을 처리하지 못했습니다.')
-  }
-}
 async function addToQueue(id) {
   try {
     await playerApi.queueAdd([id])
@@ -254,10 +262,6 @@ async function doDeleteFolder(withMedia) {
   }
 }
 
-function todo(what) {
-  notify(`${what} 기능은 준비 중입니다.`)
-}
-
 const notice = ref('')
 let nt = null
 function notify(msg) {
@@ -270,6 +274,7 @@ function notify(msg) {
 <template>
   <section
     class="lib"
+    @click.self="clearSel"
     @dragenter="onLibDragEnter"
     @dragover="onLibDragOver"
     @dragleave="onLibDragLeave"
@@ -278,7 +283,9 @@ function notify(msg) {
     <div class="head">
       <h3>전체 목록</h3>
       <span class="src">USB 라이브러리</span>
+      <span v-if="selected.size" class="selcnt">{{ selected.size }}개 선택됨</span>
       <span v-if="usingMock" class="mock">샘플 데이터 · 서버 미연결</span>
+      <button class="sortbtn" @click="cycleSort" title="정렬 순서 바꾸기">{{ sortIcons[sortMode] }} {{ sortLabels[sortMode] }}</button>
     </div>
 
     <div class="tabs">
@@ -317,21 +324,13 @@ function notify(msg) {
       전체·동영상·사진·음악 탭에서 파일을 이 폴더 탭 위로 드래그하면 담깁니다.
     </p>
 
-    <div v-if="selected.size" class="selbar">
-      <span class="cnt">{{ selected.size }}개 선택됨</span>
-      <button class="sbtn" @click="playSelection">▶ 선택 재생</button>
-      <button class="sbtn" @click="todo('큐에 추가')">＋ 큐에 추가</button>
-      <button class="sbtn" @click="todo('목록으로 저장')">💾 목록으로 저장</button>
-      <button class="sbtn ghost" @click="clearSel">선택 해제</button>
-    </div>
-
     <p v-if="notice" class="notice">{{ notice }}</p>
 
     <div v-if="loading" class="empty">불러오는 중…</div>
-    <div v-else-if="!filtered.length" class="empty">
+    <div v-else-if="!filtered.length" class="empty" @click="clearSel">
       {{ activeFolder !== null ? '이 폴더는 비어 있습니다. 파일을 드래그해 담아보세요.' : '이 유형의 미디어가 없습니다.' }}
     </div>
-    <div v-else class="grid">
+    <div v-else class="grid" @click.self="clearSel">
       <MediaCard
         v-for="m in filtered"
         :key="m.content_id"
@@ -409,6 +408,21 @@ function notify(msg) {
   padding: 1px 7px;
   border-radius: 20px;
 }
+.head .selcnt {
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.head .sortbtn {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 11px;
+  border-radius: 20px;
+  border: 1px solid var(--bd);
+  background: var(--sf);
+  color: var(--muted);
+}
+.head .sortbtn:hover { color: var(--text); border-color: var(--muted); }
 .tabs {
   display: flex;
   gap: 5px;

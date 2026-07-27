@@ -13,4 +13,5 @@ def media_out(row: dict) -> dict:
         "photo_sec": row["default_photo_sec"] if row["media_type"] == "photo" else None,
         "thumb_url": f"/thumb/{row['content_id']}" if row["media_type"] != "music" else None,
         "available": bool(row["available"]),
+        "first_seen": row["first_seen"],
     }
