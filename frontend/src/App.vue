@@ -95,7 +95,7 @@ async function logout() {
     </div>
 
     <NowPlaying />
-    <PlayQueue @edit="queueEditor = true" />
+    <PlayQueue @saved="plKey++" />
 
     <Settings v-if="showSettings" @close="showSettings = false" />
 

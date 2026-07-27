@@ -216,6 +216,50 @@ class Player:
             out.append({"content_id": cid, "kind": b.kind, "current": i == self.pos, "sec": sec})
         return out
 
+    def _primary_id(self, b):
+        if b is None:
+            return None
+        if b.kind == "video":
+            return b.video_id
+        if b.photos:
+            return b.photos[0][0]
+        return b.music_id
+
+    def set_queue_blocks(self, blocks):
+        """큐를 새 블록 구조로 교체(라이브 편집). 재생 중이던 항목은 최대한 유지.
+
+        - 현재 재생 블록과 '대표 content_id'가 같은 블록을 새 큐에서 찾아 이어감.
+        - 그 블록의 음악/사진이 바뀌었으면 다시 로드(배경음악 시작/정지 반영).
+        - 못 찾으면 처음부터(재생 중이었으면), 큐가 비면 대기화면.
+        """
+        was_playing = self.status == "playing"
+        cur = self._current_block()
+        old_primary = self._primary_id(cur)
+        old_music = cur.music_id if cur else None
+        old_photos = list(cur.photos) if cur else None
+        self.queue = list(blocks)
+        self._rebuild_order()
+        if not self.order:
+            self.pos = -1
+            self._to_standby()
+            return
+        new_pos = None
+        for i, oi in enumerate(self.order):
+            if self._primary_id(self.queue[oi]) == old_primary:
+                new_pos = i
+                break
+        if new_pos is None:
+            self.pos = 0
+            # 재생 중이었거나, 대기(standby)였다가 항목이 생기면 재생 시작
+            if was_playing or old_primary is None:
+                self._load_current()
+            return
+        self.pos = new_pos
+        newb = self.queue[self.order[new_pos]]
+        changed = (newb.music_id != old_music) or (list(newb.photos) != (old_photos or []))
+        if was_playing and changed:
+            self._load_current()
+
     def set_photo_duration(self, index, sec):
         """큐 index 블록(사진 슬라이드쇼)의 표시시간을 갱신."""
         if not (0 <= index < len(self.queue)):

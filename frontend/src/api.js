@@ -118,6 +118,7 @@ export const schedule = {
 export const player = {
   queue: () => api('/api/player/queue'),
   queueBlocks: () => api('/api/player/queue/blocks'),
+  setBlocks: (blocks) => api('/api/player/queue/set_blocks', { method: 'POST', body: { blocks } }),
   queueAdd: (contentIds) => api('/api/player/queue/add', { method: 'POST', body: { content_ids: contentIds } }),
   queueRemove: (index) => api('/api/player/queue/remove', { method: 'POST', body: { index } }),
   setPhotoSec: (index, sec) => api('/api/player/queue/photo_sec', { method: 'POST', body: { index, sec } }),

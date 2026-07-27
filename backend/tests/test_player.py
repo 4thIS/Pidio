@@ -510,3 +510,43 @@ def test_set_photo_duration_updates_block():
     p.play_blocks([Block(kind="slideshow", photos=[("p1", 5.0), ("p2", 5.0)])], "s")
     p.set_photo_duration(0, 9)
     assert p.queue[0].photos == [("p1", 9.0), ("p2", 9.0)]
+
+
+# ---- set_queue_blocks: 라이브 큐 재구성(현재 재생 유지) ----
+
+def test_set_queue_blocks_keeps_current_playing():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4"),
+                   Block(kind="video", video_id="/v/b.mp4")], "s")
+    p.jump_to(1)                       # 현재 = b
+    v.loaded = "SENTINEL"
+    p.set_queue_blocks([Block(kind="video", video_id="/v/a.mp4"),
+                        Block(kind="video", video_id="/v/b.mp4"),
+                        Block(kind="video", video_id="/v/c.mp4")])
+    assert p._current_block().video_id == "/v/b.mp4"  # 여전히 b
+    assert v.loaded == "SENTINEL"                       # 재로드 안 함(구조 동일)
+    assert p.get_state().queue_len == 3
+
+
+def test_set_queue_blocks_attach_music_reloads_current_photo():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="slideshow", music_id=None, photos=[("p1", 5.0)])], "s")
+    assert v.loaded == "p1"
+    # 같은 사진에 배경음악을 붙임 → 현재 블록 음악이 바뀜 → 재로드(음악 시작)
+    p.set_queue_blocks([Block(kind="slideshow", music_id="m1", photos=[("p1", 5.0)])])
+    assert m.loaded == "m1"
+
+
+def test_set_queue_blocks_current_gone_restarts():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4")], "s")
+    p.set_queue_blocks([Block(kind="video", video_id="/v/z.mp4")])
+    assert v.loaded == "/v/z.mp4"      # 이전 현재가 사라짐 → 처음부터
+
+
+def test_set_queue_blocks_empty_standby():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4")], "s")
+    p.set_queue_blocks([])
+    assert v.loaded == "/standby.png"
+    assert p.status == "standby"

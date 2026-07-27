@@ -155,6 +155,26 @@ def queue_blocks(request: Request) -> dict:
             "repeat_mode": p.repeat, "shuffle": bool(p.shuffle)}
 
 
+class SetBlocksBody(BaseModel):
+    blocks: list[dict]
+
+
+@router.post("/player/queue/set_blocks")
+def queue_set_blocks(body: SetBlocksBody, request: Request) -> dict:
+    """라이브 큐를 새 블록 구조로 교체(현재 재생목록 타임라인 편집)."""
+    from app.domain.contracts import Block
+    blks = []
+    for b in body.blocks:
+        if b.get("kind") == "video":
+            blks.append(Block(kind="video", video_id=b.get("video_id")))
+        else:
+            photos = [(p["photo_id"], float(p.get("duration_sec") or 5)) for p in b.get("photos", [])]
+            blks.append(Block(kind="slideshow", music_id=b.get("music_id"), photos=photos))
+    request.app.state.deps.player.set_queue_blocks(blks)
+    _publish(request)
+    return {"ok": True}
+
+
 # ---- 단순 동작 (마지막 선언) ----
 
 @router.post("/player/{action}")
