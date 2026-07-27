@@ -428,3 +428,63 @@ def test_enqueue_to_idle_autoplays():
     p.enqueue([Block(kind="video", video_id="/v/x.mp4")])
     assert v.loaded == "/v/x.mp4"      # 바로 재생 시작
     assert p.status == "playing"
+
+
+# ---- remove_content: 파일 삭제 시 라이브 큐 정리(미디어 삭제 연동) ----
+
+def test_remove_content_drops_matching_video_block():
+    p, v, m = _abc()
+    p.remove_content("/v/b.mp4")          # B 참조 블록 제거
+    assert [b.video_id for b in p.queue] == ["/v/a.mp4", "/v/c.mp4"]
+
+
+def test_remove_content_keeps_current_playing():
+    p, v, m = _abc()
+    p.jump_to(2)                          # 현재 = C
+    p.remove_content("/v/a.mp4")          # 앞의 A 삭제
+    assert p._current_block().video_id == "/v/c.mp4"
+    assert v.loaded == "/v/c.mp4"         # 재생물 안 바뀜
+
+
+def test_remove_content_current_block_advances():
+    p, v, m = _abc()
+    p.jump_to(1)                          # 현재 = B
+    p.remove_content("/v/b.mp4")          # 현재 블록 삭제 → 다음(C)
+    assert v.loaded == "/v/c.mp4"
+
+
+def test_remove_content_last_goes_standby():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4")], "s")
+    p.remove_content("/v/a.mp4")
+    assert v.loaded == "/standby.png"
+    assert p.status == "standby"
+
+
+def test_remove_content_no_match_is_noop():
+    p, v, m = _abc()
+    p.jump_to(1)
+    p.remove_content("/v/zzz.mp4")        # 큐에 없는 것
+    assert p.get_state().queue_len == 3
+    assert v.loaded == "/v/b.mp4"
+
+
+def test_remove_content_removes_photo_from_slideshow():
+    p, v, m = _p()
+    p.play_blocks(
+        [Block(kind="slideshow", music_id="/m/s.mp3",
+               photos=[("/p/1.jpg", 5.0), ("/p/2.jpg", 5.0)])], "s"
+    )
+    p.remove_content("/p/1.jpg")          # 사진 1장만 제거(블록은 유지)
+    assert p.queue[0].photos == [("/p/2.jpg", 5.0)]
+    assert p.get_state().queue_len == 1
+
+
+def test_remove_content_empty_slideshow_dropped():
+    p, v, m = _p()
+    p.play_blocks(
+        [Block(kind="slideshow", music_id=None, photos=[("/p/1.jpg", 5.0)])], "s"
+    )
+    p.remove_content("/p/1.jpg")          # 마지막 사진·음악 없음 → 블록 제거
+    assert p.get_state().queue_len == 0
+    assert v.loaded == "/standby.png"

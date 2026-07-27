@@ -165,8 +165,8 @@ const durText = computed(() =>
 }
 .card:hover .acts { opacity: 1; }
 .act {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 6px;
   border: none;
   background: rgba(0, 0, 0, 0.55);

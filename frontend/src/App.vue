@@ -18,6 +18,7 @@ const detailId = ref(null)
 const showSettings = ref(false)
 const uploader = ref(null)
 const libKey = ref(0) // 업로드 완료 시 목록 새로고침
+const plKey = ref(0)  // 미디어 삭제 시 플레이리스트 목록 새로고침
 
 onMounted(async () => {
   try {
@@ -68,8 +69,8 @@ async function logout() {
     <PlaylistDetail v-else-if="detailId !== null" :id="detailId" @close="detailId = null" />
 
     <div v-else class="rest">
-      <Playlists @open="detailId = $event" />
-      <Library :key="libKey" />
+      <Playlists :key="plKey" @open="detailId = $event" />
+      <Library :key="libKey" @media-deleted="plKey++" />
     </div>
 
     <Uploader ref="uploader" @uploaded="libKey++" />

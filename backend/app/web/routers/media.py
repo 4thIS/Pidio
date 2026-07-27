@@ -46,4 +46,7 @@ def remove_media(content_id: str, request: Request) -> dict:
     except OSError:
         pass
     media_repo.delete_media(deps.db, content_id)
+    # 라이브 재생 큐에서도 즉시 제거 + 상태 방송(플리/큐/재생바 갱신)
+    deps.player.remove_content(content_id)
+    request.app.state.hub.publish(deps.player.get_state())
     return {"ok": True}

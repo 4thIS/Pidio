@@ -130,6 +130,47 @@ class Player:
         self._rebuild_order()
         self._restore_pos(cur)
 
+    def remove_content(self, content_id):
+        """content_id 를 참조하는 블록을 큐에서 정리(파일 삭제와 연동).
+
+        - 동영상 블록: 그 content_id면 블록 제거.
+        - 슬라이드쇼: 배경음악이면 무음 처리, 사진이면 그 사진만 제외.
+          사진·음악이 모두 사라지면 블록 제거.
+        현재 재생 블록이 사라지면 다음 블록으로(없으면 대기).
+        """
+        cur = self._current_block()
+        kept = []
+        changed = False
+        for b in self.queue:
+            if b.kind == "video":
+                if b.video_id == content_id:
+                    changed = True
+                    continue
+            else:  # slideshow
+                if b.music_id == content_id:
+                    b.music_id = None
+                    changed = True
+                if b.photos and any(pid == content_id for pid, _ in b.photos):
+                    b.photos = [(pid, sec) for pid, sec in b.photos if pid != content_id]
+                    changed = True
+                if not b.music_id and not b.photos:
+                    continue  # 빈 슬라이드쇼 제거
+            kept.append(b)
+        if not changed:
+            return
+        cur_gone = cur is not None and all(cur is not b for b in kept)
+        self.queue = kept
+        self._rebuild_order()
+        if cur_gone:
+            if self.order:
+                self.pos = min(self.pos, len(self.order) - 1)
+                self._load_current()
+            else:
+                self.pos = -1
+                self._to_standby()
+        else:
+            self._restore_pos(cur)
+
     # ---- 상태 ----
     def get_state(self) -> PlayerState:
         b = self._current_block()

@@ -230,11 +230,11 @@ function notify(msg) {
 .pl:hover .cover .play { opacity: 1; }
 .cover .del {
   position: absolute;
-  right: 7px;
-  top: 7px;
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
+  right: 6px;
+  top: 6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   border: none;
   background: rgba(0, 0, 0, 0.55);
   color: #fff;

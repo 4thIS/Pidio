@@ -106,4 +106,5 @@ export const player = {
   jump: (index) => api('/api/player/jump', { method: 'POST', body: { index } }),
   repeat: (mode) => api('/api/player/repeat', { method: 'POST', body: { mode } }),
   shuffle: (on) => api('/api/player/shuffle', { method: 'POST', body: { on } }),
+  reorder: (from, to) => api('/api/player/queue/reorder', { method: 'POST', body: { from, to } }),
 }

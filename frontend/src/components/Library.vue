@@ -11,6 +11,8 @@ const TABS = [
   { k: 'photo', label: '🖼 사진' },
   { k: 'music', label: '🎵 음악' },
 ]
+const emit = defineEmits(['media-deleted'])
+
 const tab = ref('all')
 const items = ref([])
 const usingMock = ref(false)
@@ -76,6 +78,7 @@ async function deleteMedia(id) {
     await mediaApi.remove(id)
     items.value = items.value.filter((m) => m.content_id !== id)
     selected.delete(id)
+    emit('media-deleted', id) // 플레이리스트 목록도 갱신하도록 상위에 통지
     notify('삭제했습니다.')
   } catch {
     notify('삭제하지 못했습니다.')
