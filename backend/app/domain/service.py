@@ -68,9 +68,20 @@ class AppService:
 
     # ---- 자동(스케줄) ----
     def evaluate_schedule(self, now=None):
+        now = now or self._now()
+        # 예약 상태 갱신(모드 무관): 지금 시각에 '예약'이 걸린 플리(기본 플리 제외)
+        scheduled_id = scheduler.active_playlist_id(
+            playlist_repo.list_schedules(self.conn), now, None
+        )
+        if scheduled_id is not None:
+            pl = playlist_repo.get_playlist(self.conn, scheduled_id)
+            self.player.schedule_active = True
+            self.player.schedule_active_name = pl["name"] if pl else None
+        else:
+            self.player.schedule_active = False
+            self.player.schedule_active_name = None
         if self.player.mode == "manual":
             return
-        now = now or self._now()
         target = scheduler.active_playlist_id(
             playlist_repo.list_schedules(self.conn), now, self._default_playlist_id()
         )

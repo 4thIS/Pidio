@@ -44,6 +44,8 @@ function guardFileDrag(e) {
 onMounted(() => {
   window.addEventListener('dragover', guardFileDrag)
   window.addEventListener('drop', guardFileDrag)
+  // 저장된 테마 적용(기본 다크)
+  document.documentElement.dataset.theme = localStorage.getItem('pidio-theme') || 'dark'
 })
 onBeforeUnmount(() => {
   window.removeEventListener('dragover', guardFileDrag)
@@ -97,12 +99,15 @@ async function logout() {
     <NowPlaying />
     <PlayQueue @saved="plKey++" />
 
-    <Settings v-if="showSettings" @close="showSettings = false" />
-
-    <div v-else class="rest">
+    <div class="rest">
       <Playlists :key="plKey" @open="openDetail" />
       <Library :key="libKey" @media-deleted="plKey++" @upload-files="onUploadFiles" />
     </div>
+
+    <!-- 설정: 화면 위에 모달로 -->
+    <Transition name="modal">
+      <Settings v-if="showSettings" @close="showSettings = false" />
+    </Transition>
 
     <!-- 플리 상세/재생목록 편집: 원래 화면 위에 박스로 열림(타임라인 에디터) -->
     <Transition name="modal">
@@ -139,7 +144,7 @@ async function logout() {
   gap: 12px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--bd);
-  background: #151c21;
+  background: var(--topbar);
 }
 .logo {
   display: flex;

@@ -1,5 +1,5 @@
 /* Pidio 전역 스타일 — 다크 미디어 UI (목업과 동일 톤) */
-:root {
+:root, :root[data-theme="dark"] {
   --bg: #12171b;
   --sf: #1a2228;
   --elev: #222c33;
@@ -11,8 +11,25 @@
   --teal: #54c2c8;
   --danger: #e06a6a;
   --warn: #e0a54a;
+  --topbar: #151c21;
   --font-sans: ui-sans-serif, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", "SFMono-Regular", "Consolas", monospace;
+}
+
+/* 라이트 테마 — 하양 + 파랑 (토스풍) */
+:root[data-theme="light"] {
+  --bg: #f2f4f6;
+  --sf: #ffffff;
+  --elev: #ffffff;
+  --bd: #e5e8eb;
+  --text: #191f28;
+  --muted: #6b7684;
+  --faint: #8b95a1;
+  --accent: #3182f6;
+  --teal: #0ea5b7;
+  --danger: #f04452;
+  --warn: #ff9e2c;
+  --topbar: #ffffff;
 }
 
 * { box-sizing: border-box; }

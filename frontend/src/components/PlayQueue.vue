@@ -102,15 +102,6 @@ function flash(msg) { notice.value = msg; clearTimeout(nt); nt = setTimeout(() =
     </div>
 
     <div class="pqbody">
-      <div v-if="source" class="plcard">
-        <button class="plx" @click.stop="clearQueue" title="이 플레이리스트를 재생목록에서 비우기">✕</button>
-        <div class="cover">
-          <span v-for="(c, i) in (source.cover_content_ids || []).slice(0, 3)" :key="i" class="s" :class="'s' + i" :style="coverStyle(c)"></span>
-        </div>
-        <div class="nm">{{ source.name }}</div>
-        <div class="mt"><span>{{ source.item_count }}개</span><span>{{ formatTime(source.total_sec) }}</span></div>
-      </div>
-
       <Timeline
         :blocks="blocks"
         :media-map="mediaMap"
@@ -128,7 +119,7 @@ function flash(msg) { notice.value = msg; clearTimeout(nt); nt = setTimeout(() =
 
 <style scoped>
 .pq.over { outline: 2px dashed var(--accent); outline-offset: -4px; }
-.pq { padding: 10px 16px 12px; background: #141a1f; border-bottom: 1px solid var(--bd); }
+.pq { padding: 10px 16px 12px; background: var(--sf); border-bottom: 1px solid var(--bd); }
 .pqhead { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
 .pqtitle { font-size: 12px; font-weight: 680; color: var(--muted); letter-spacing: -0.01em; }
 .pqnotice { font-size: 11px; color: var(--teal); }

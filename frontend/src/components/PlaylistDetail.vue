@@ -198,7 +198,7 @@ function notify(msg) { notice.value = msg; clearTimeout(nt); nt = setTimeout(() 
 .modal-enter-from .sheet, .modal-leave-to .sheet { transform: translateY(14px) scale(0.97); }
 .pd-ov { position: fixed; inset: 0; background: rgba(6, 9, 11, 0.66); backdrop-filter: blur(2px); display: grid; place-items: center; z-index: 25; padding: 24px; }
 .sheet { width: 860px; max-width: 100%; max-height: 88vh; overflow-y: auto; background: var(--bg); border: 1px solid var(--bd); border-radius: 16px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55); }
-.dbar { display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--bd); background: #151c21; border-radius: 16px 16px 0 0; position: sticky; top: 0; z-index: 4; }
+.dbar { display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--bd); background: var(--topbar); border-radius: 16px 16px 0 0; position: sticky; top: 0; z-index: 4; }
 .nmwrap { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .dt { font-size: 16px; font-weight: 720; letter-spacing: -0.01em; }
 .qbadge { font-size: 10px; font-weight: 700; color: var(--teal); background: color-mix(in srgb, var(--teal) 15%, transparent); border-radius: 6px; padding: 2px 7px; }

@@ -30,6 +30,8 @@ class Player:
         self.duration_sec = 0.0
         self._photo_idx = 0
         self._photo_started = None  # 현재 사진 표시 시작 시각(진행바용, monotonic)
+        self.schedule_active = False        # 지금 예약이 걸려있는지(서비스가 갱신)
+        self.schedule_active_name = None
         self.on_state_change = on_state_change   # 상태 변경 콜백(SSE 방송용)
         self._resolve = resolve_path or (lambda cid: cid)  # content_id → 실제 파일 경로
         self._resolve_title = resolve_title or (lambda cid: cid)  # content_id → 표시 제목
@@ -197,6 +199,8 @@ class Player:
             source_label=self.source_label,
             position_sec=self.position_sec,
             duration_sec=self.duration_sec,
+            schedule_active=self.schedule_active,
+            schedule_active_name=self.schedule_active_name,
         )
 
     def queue_view(self):

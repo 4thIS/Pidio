@@ -1,6 +1,6 @@
 <script setup>
 // D-3 전체 목록 — 타입 탭 · 폴더(수동 그룹) · 체크박스 다중선택 · 넷플릭스 호버 미리보기.
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import MediaCard from './MediaCard.vue'
 import { media as mediaApi, player as playerApi, folders as folderApi } from '../api.js'
 import { MOCK_MEDIA } from '../mock.js'
@@ -32,6 +32,13 @@ const activeFolderObj = computed(() =>
 onMounted(async () => {
   await Promise.all([load(), loadFolders()])
 })
+
+// 화면 어디든(카드가 아닌 빈 공간·다른 영역) 클릭하면 선택 해제(#7)
+function onDocClick(e) {
+  if (selected.size && !e.target.closest('.card')) selected.clear()
+}
+onMounted(() => document.addEventListener('click', onDocClick))
+onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 
 async function load() {
   loading.value = true

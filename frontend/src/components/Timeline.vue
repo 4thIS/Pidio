@@ -291,7 +291,7 @@ function choose(cid) {
 // ---- 표시 헬퍼 ----
 function segTitle(seg) { const m = props.mediaMap[seg.content_id]; return m ? m.title : seg.content_id }
 function segThumb(seg) { return seg.type === 'music' ? null : `/thumb/${seg.content_id}` }
-function segEmoji(seg) { return seg.type === 'video' ? '🎬' : seg.type === 'music' ? '🎵' : '🖼' }
+function segEmoji(seg) { return seg.type === 'video' ? '🎬' : seg.type === 'music' ? '🎵' : '📷' }
 function photoSecDisplay(i) { const song = songCovering(i); return song ? perPhotoSec(song).toFixed(1) : null }
 function coverStyle(cid) { return { backgroundImage: `url(/thumb/${cid})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: '#1a2129' } }
 
@@ -399,7 +399,7 @@ defineExpose({ openItemPicker })
 .cell.dragging { opacity: 0.4; }
 .cell.cur { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .cell.over::before { content: ''; position: absolute; left: -7px; top: 3px; bottom: 3px; width: 3px; border-radius: 2px; background: var(--teal); }
-.cell .cth { height: 66px; border-radius: 7px; background: #1a2129; position: relative; display: grid; place-items: center; overflow: hidden; cursor: pointer; }
+.cell .cth { height: 66px; border-radius: 7px; background: var(--elev); position: relative; display: grid; place-items: center; overflow: hidden; cursor: pointer; }
 .cell.music .cth { background: linear-gradient(135deg, #3a4a86, #7c3f6b); }
 .cell .cemoji { font-size: 22px; }
 .cell .curbadge { position: absolute; left: 5px; top: 5px; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 9px; display: grid; place-items: center; }

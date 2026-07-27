@@ -17,7 +17,7 @@ export function thumbGradient(item) {
 }
 
 export function typeEmoji(t) {
-  return t === 'video' ? '🎬' : t === 'photo' ? '🖼' : '🎵'
+  return t === 'video' ? '🎬' : t === 'photo' ? '📷' : '🎵'
 }
 
 export function typeLabel(t) {
