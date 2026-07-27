@@ -4,6 +4,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { store } from '../store.js'
 import { player as playerApi, playlists as plApi, media as mediaApi, folders as folderApi } from '../api.js'
+import { dialog } from '../dialog.js'
 import { formatTime } from '../format.js'
 import Timeline from './Timeline.vue'
 
@@ -49,14 +50,14 @@ function jumpTo(blockIndex) {
   playerApi.jump(blockIndex).catch(() => {})
 }
 
-function clearQueue() {
+async function clearQueue() {
   if (!blocks.value.length) return
-  if (!confirm('현재 재생목록을 비울까요? (재생이 멈추고 대기화면이 됩니다)')) return
+  if (!(await dialog.confirm('재생목록 비우기', { message: '현재 재생목록을 비울까요? 재생이 멈추고 대기화면이 됩니다.', confirmText: '비우기' }))) return
   playerApi.action('stop').then(reload).catch(() => {})
 }
-function saveQueue() {
+async function saveQueue() {
   if (!blocks.value.length) return
-  const name = (prompt('새 플레이리스트 이름', source.value?.name ? source.value.name + ' 복사' : '재생목록') || '').trim()
+  const name = ((await dialog.prompt('새 플레이리스트로 저장', source.value?.name ? source.value.name + ' 복사' : '재생목록', { placeholder: '플레이리스트 이름' })) || '').trim()
   if (!name) return
   playerApi.saveQueue(name).then(() => { emit('saved'); flash(`"${name}"으로 저장했습니다.`) }).catch(() => flash('저장에 실패했습니다.'))
 }
@@ -119,7 +120,15 @@ function flash(msg) { notice.value = msg; clearTimeout(nt); nt = setTimeout(() =
 
 <style scoped>
 .pq.over { outline: 2px dashed var(--accent); outline-offset: -4px; }
-.pq { padding: 10px 16px 12px; background: var(--sf); border-bottom: 1px solid var(--bd); }
+.pq {
+  padding: 10px 16px 12px;
+  background: var(--sf);
+  border-bottom: 1px solid var(--bd);
+  position: sticky;   /* 스크롤 시 재생목록은 최상단에 고정(#4) */
+  top: 0;
+  z-index: 6;
+}
+:root[data-theme="light"] .pq { background: #eef4fc; }
 .pqhead { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
 .pqtitle { font-size: 12px; font-weight: 680; color: var(--muted); letter-spacing: -0.01em; }
 .pqnotice { font-size: 11px; color: var(--teal); }

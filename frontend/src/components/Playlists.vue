@@ -2,6 +2,7 @@
 // D-4 플레이리스트 카드 목록 (가로 스크롤). 클릭 → 상세, ▶ → 재생.
 import { ref, computed, onMounted } from 'vue'
 import { playlists as plApi, ApiError } from '../api.js'
+import { dialog } from '../dialog.js'
 import { MOCK_PLAYLISTS, mediaById } from '../mock.js'
 import { thumbGradient } from '../mediaView.js'
 import { scheduleSummary } from '../schedule.js'
@@ -52,7 +53,7 @@ async function create() {
 }
 
 async function remove(pl) {
-  if (!confirm(`"${pl.name}" 목록을 삭제할까요?`)) return
+  if (!(await dialog.confirm('플레이리스트 삭제', { message: `"${pl.name}" 목록을 삭제할까요?`, confirmText: '삭제' }))) return
   try {
     await plApi.remove(pl.id)
     items.value = items.value.filter((x) => x.id !== pl.id)
@@ -247,7 +248,7 @@ function notify(msg) {
   border-radius: 8px;
   position: relative;
   overflow: hidden;
-  background: #0f1519;
+  background: color-mix(in srgb, var(--text) 7%, var(--sf));
 }
 .cover .s {
   position: absolute;

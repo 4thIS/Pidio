@@ -12,6 +12,7 @@ import Library from './components/Library.vue'
 import PlaylistDetail from './components/PlaylistDetail.vue'
 import Uploader from './components/Uploader.vue'
 import Settings from './components/Settings.vue'
+import DialogHost from './components/DialogHost.vue'
 
 // 간단 뷰 전환: 메인 위에 플레이리스트 상세(모달) ↔ 설정 (라우터 없이)
 const detailId = ref(null)
@@ -122,6 +123,7 @@ async function logout() {
     </Transition>
 
     <Uploader ref="uploader" @uploaded="libKey++" />
+    <DialogHost />
   </main>
 </template>
 

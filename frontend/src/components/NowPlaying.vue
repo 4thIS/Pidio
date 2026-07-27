@@ -141,6 +141,8 @@ const toggleShuffle = () => run(() => playerApi.shuffle(!shuffle.value))
   background: linear-gradient(120deg, var(--elev), var(--sf));
   border-bottom: 1px solid var(--bd);
 }
+/* 라이트: 은은한 파랑빛으로 구분 */
+:root[data-theme="light"] .now { background: linear-gradient(120deg, #e9f0fb, #f5f9ff); }
 .th {
   width: 150px;
   height: 86px;

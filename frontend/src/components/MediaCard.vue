@@ -88,11 +88,10 @@ const durText = computed(() =>
         <button class="act del" @click.stop="emit('delete', item.content_id)" :title="deleteTitle">{{ deleteIcon }}</button>
       </div>
 
+      <!-- 썸네일은 항상 렌더(클릭 대상 유지). 호버 미리보기는 위에 오버레이 -->
+      <img v-if="thumbSrc" class="thumbimg" :src="thumbSrc" alt="" draggable="false" @error="thumbFailed = true" />
+      <span v-else class="emoji">{{ typeEmoji(item.media_type) }}</span>
       <HoverPreview v-if="expanded" :item="item" />
-      <template v-else>
-        <img v-if="thumbSrc" class="thumbimg" :src="thumbSrc" alt="" draggable="false" @error="thumbFailed = true" />
-        <span v-else class="emoji">{{ typeEmoji(item.media_type) }}</span>
-      </template>
 
       <!-- 오른쪽 아래: 동영상=고정 시간 / 사진=시간 입력 -->
       <span v-if="item.media_type === 'photo'" class="dur photo" @click.stop>

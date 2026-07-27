@@ -6,6 +6,7 @@ import Timeline from './Timeline.vue'
 import ScheduleModal from './ScheduleModal.vue'
 import { scheduleSummary } from '../schedule.js'
 import { playlists as plApi, media as mediaApi, folders as folderApi, player as playerApi } from '../api.js'
+import { dialog } from '../dialog.js'
 import { MOCK_MEDIA } from '../mock.js'
 
 const props = defineProps({
@@ -84,7 +85,7 @@ async function persist() {
   }
 }
 async function saveAsNew() {
-  const name = (prompt('새 플레이리스트 이름', pl.value.name || '재생목록') || '').trim()
+  const name = ((await dialog.prompt('새 플레이리스트로 저장', pl.value.name || '재생목록', { placeholder: '플레이리스트 이름' })) || '').trim()
   if (!name) return
   try {
     const r = await plApi.create(name)

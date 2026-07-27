@@ -3,6 +3,7 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
 import MediaCard from './MediaCard.vue'
 import { media as mediaApi, player as playerApi, folders as folderApi } from '../api.js'
+import { dialog } from '../dialog.js'
 import { MOCK_MEDIA } from '../mock.js'
 
 const emit = defineEmits(['media-deleted', 'upload-files'])
@@ -178,7 +179,7 @@ async function addToQueue(id) {
 async function deleteMedia(id) {
   if (activeFolder.value !== null) {
     const f = activeFolderObj.value
-    if (!confirm(`"${f?.name}" 폴더에서 이 파일을 뺄까요? (파일 자체는 유지)`)) return
+    if (!(await dialog.confirm('폴더에서 빼기', { message: `"${f?.name}" 폴더에서 이 파일을 뺄까요? (파일 자체는 유지)`, confirmText: '빼기' }))) return
     try {
       await folderApi.removeItem(activeFolder.value, id)
       folderIds.value = folderIds.value.filter((c) => c !== id)
@@ -189,7 +190,7 @@ async function deleteMedia(id) {
     }
     return
   }
-  if (!confirm('이 파일을 삭제할까요? (USB에서 제거됩니다)')) return
+  if (!(await dialog.confirm('파일 삭제', { message: '이 파일을 삭제할까요? USB에서 제거됩니다.', confirmText: '삭제' }))) return
   try {
     await mediaApi.remove(id)
     items.value = items.value.filter((m) => m.content_id !== id)
@@ -204,7 +205,7 @@ async function deleteMedia(id) {
 
 // ---- 폴더 생성 ----
 async function createFolder() {
-  const name = (prompt('새 폴더 이름', '새 폴더') || '').trim()
+  const name = ((await dialog.prompt('새 폴더', '', { placeholder: '폴더 이름' })) || '').trim()
   if (!name) return
   try {
     const r = await folderApi.create(name)

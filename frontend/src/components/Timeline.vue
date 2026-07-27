@@ -417,7 +417,7 @@ defineExpose({ openItemPicker })
 .lane { position: relative; min-height: 42px; margin-top: 8px; border-top: 1px dashed var(--bd); padding-top: 8px; border-radius: 0 0 8px 8px; transition: background 0.15s; }
 .lane.drop { background: color-mix(in srgb, var(--accent) 14%, transparent); outline: 2px dashed color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: -2px; }
 .laneempty { font-size: 10.5px; color: var(--faint); padding-top: 6px; }
-.songbar { position: absolute; top: 8px; height: 26px; border-radius: 7px; background: color-mix(in srgb, var(--accent) 30%, #1a2129); border: 1px solid var(--accent); display: flex; align-items: center; gap: 4px; padding: 0 3px; overflow: hidden; }
+.songbar { position: absolute; top: 8px; height: 26px; border-radius: 7px; background: color-mix(in srgb, var(--accent) 24%, var(--sf)); border: 1px solid var(--accent); display: flex; align-items: center; gap: 4px; padding: 0 3px; overflow: hidden; }
 .songbar .slabel { flex: 1; font-size: 9.5px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; }
 .songbar .h { width: 9px; align-self: stretch; cursor: ew-resize; flex: none; border-radius: 4px; background: var(--accent); }
 .songbar .h:hover { background: #fff; }
