@@ -16,17 +16,17 @@
   --font-mono: ui-monospace, "Cascadia Code", "SFMono-Regular", "Consolas", monospace;
 }
 
-/* 라이트 테마 — 하양 + 파랑 (토스풍) */
+/* 라이트 테마 — 하양 + 파랑 (토스풍). muted/faint/teal은 흰 배경 대비 확보 위해 어둡게. */
 :root[data-theme="light"] {
   --bg: #f2f4f6;
   --sf: #ffffff;
   --elev: #ffffff;
   --bd: #e5e8eb;
   --text: #191f28;
-  --muted: #6b7684;
-  --faint: #8b95a1;
+  --muted: #57606e;   /* was #6b7684 — 흰 배경 대비 ↑ */
+  --faint: #69727e;   /* was #8b95a1 — 타임스탬프·개수 가독성 ↑ */
   --accent: #3182f6;
-  --teal: #0ea5b7;
+  --teal: #0b7c8a;    /* was #0ea5b7 — 텍스트로 쓰일 때 대비 ↑ */
   --danger: #f04452;
   --warn: #ff9e2c;
   --topbar: #ffffff;

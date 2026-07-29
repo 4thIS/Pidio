@@ -156,14 +156,33 @@ function notify(msg) { notice.value = msg; clearTimeout(nt); nt = setTimeout(() 
 
       <template v-else>
         <div class="ctrls">
-          <button v-if="!fromQueue" class="btn acc" @click="playNow">▶ 재생</button>
-          <button class="opt" :class="{ on: pl.repeat_mode !== 'off' }" @click="cycleRepeat">
-            {{ pl.repeat_mode === 'one' ? '🔂 한개반복' : pl.repeat_mode === 'all' ? '🔁 전체반복' : '🔁 반복꺼짐' }}
+          <button v-if="!fromQueue" class="btn acc" @click="playNow">
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="7,4.5 20,12 7,19.5" /></svg>
+            재생
           </button>
-          <button class="opt" :class="{ on: pl.shuffle }" @click="toggleShuffle">🔀 셔플</button>
+          <button class="opt ricon" :class="{ on: pl.repeat_mode !== 'off' }"
+                  :title="pl.repeat_mode === 'one' ? '한 개 반복' : pl.repeat_mode === 'all' ? '전체 반복' : '반복 꺼짐'"
+                  @click="cycleRepeat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
+              <polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
+            </svg>
+            <span v-if="pl.repeat_mode === 'one'" class="one">1</span>
+            {{ pl.repeat_mode === 'one' ? '한개반복' : pl.repeat_mode === 'all' ? '전체반복' : '반복' }}
+          </button>
+          <button class="opt" :class="{ on: pl.shuffle }" title="셔플" @click="toggleShuffle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" />
+              <polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" /><line x1="4" y1="4" x2="9" y2="9" />
+            </svg>
+            셔플
+          </button>
           <div class="grow"></div>
           <button v-if="!fromQueue" class="opt" :class="{ on: pl.schedule }" @click="schedOpen = true">
-            🕒 {{ pl.schedule ? '예약됨' : '예약' }}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+            </svg>
+            {{ pl.schedule ? '예약됨' : '예약' }}
           </button>
         </div>
         <div v-if="scheduleText" class="banner">🕒 <b>{{ scheduleText }}</b> 자동 재생</div>
@@ -211,10 +230,12 @@ function notify(msg) { notice.value = msg; clearTimeout(nt); nt = setTimeout(() 
 .saveq { font-size: 12px; font-weight: 640; padding: 7px 13px; border-radius: 8px; border: none; background: var(--accent); color: #fff; }
 .x { border: none; background: var(--elev); color: var(--muted); font-size: 13px; width: 30px; height: 30px; border-radius: 8px; }
 .ctrls { display: flex; align-items: center; gap: 9px; padding: 13px 16px 4px; flex-wrap: wrap; }
-.btn { font-size: 12px; font-weight: 600; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--bd); background: var(--elev); color: var(--text); }
+.btn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--bd); background: var(--elev); color: var(--text); }
 .btn.acc { background: var(--accent); border-color: var(--accent); color: #fff; }
-.opt { font-size: 11.5px; font-weight: 600; padding: 6px 11px; border-radius: 8px; border: 1px solid var(--bd); background: var(--elev); color: var(--muted); }
+.opt { position: relative; display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; padding: 6px 11px; border-radius: 8px; border: 1px solid var(--bd); background: var(--elev); color: var(--muted); }
 .opt.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
+.btn svg, .opt svg { width: 15px; height: 15px; flex: none; }
+.opt .one { position: absolute; left: 20px; top: 3px; font-size: 8px; font-weight: 800; line-height: 1; background: var(--accent); color: #fff; border-radius: 50%; width: 11px; height: 11px; display: grid; place-items: center; }
 .banner { margin: 8px 16px 0; padding: 8px 12px; border-radius: 9px; font-size: 11.5px; background: color-mix(in srgb, var(--teal) 13%, transparent); border: 1px solid color-mix(in srgb, var(--teal) 40%, transparent); }
 .banner b { color: var(--teal); }
 .tip { margin: 10px 16px 0; font-size: 11px; color: var(--faint); }

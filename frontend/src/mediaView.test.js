@@ -4,7 +4,7 @@ import { typeEmoji, typeLabel, thumbGradient } from './mediaView.js'
 describe('typeEmoji / typeLabel', () => {
   it('타입별 이모지', () => {
     expect(typeEmoji('video')).toBe('🎬')
-    expect(typeEmoji('photo')).toBe('🖼')
+    expect(typeEmoji('photo')).toBe('📷')
     expect(typeEmoji('music')).toBe('🎵')
   })
   it('타입별 한글', () => {
