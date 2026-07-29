@@ -345,3 +345,219 @@ def test_resolve_default_is_identity():
     p = Player(v, m, "/standby.png", "/music.png")
     p.play_blocks([Block(kind="video", video_id="/abs/a.mp4")], "s")
     assert v.loaded == "/abs/a.mp4"
+
+
+def test_default_mode_is_auto_for_boot_autoplay():
+    # 부팅 직후 스케줄러 평가가 동작하려면 초기 모드가 auto 여야 함
+    v, m = FakeMpv(), FakeMpv()
+    p = Player(v, m, "/standby.png", "/music.png")
+    assert p.get_state().mode == "auto"
+
+
+def test_refresh_position_reads_from_video_mpv():
+    v, m = FakeMpv(), FakeMpv()
+    v.properties = {"time-pos": 5.0, "duration": 20.0}
+    p = Player(v, m, "/standby.png", "/music.png")
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4")], "s")
+    p.refresh_position()
+    st = p.get_state()
+    assert st.position_sec == 5.0 and st.duration_sec == 20.0
+
+
+def test_refresh_position_photo_uses_display_sec():
+    # 사진 블록: 진행바 길이는 표시시간(초), 위치는 경과(벽시계, 방금 로드→0 근처)
+    v, m = FakeMpv(), FakeMpv()
+    p = Player(v, m, "/standby.png", "/music.png")
+    p.play_blocks([Block(kind="slideshow", photos=[("p1", 8.0)])], "s")
+    p.refresh_position()
+    st = p.get_state()
+    assert st.duration_sec == 8.0
+    assert 0.0 <= st.position_sec <= 8.0
+
+
+def test_refresh_position_none_is_zero():
+    v, m = FakeMpv(), FakeMpv()   # properties 비어있음(time-pos None)
+    p = Player(v, m, "/standby.png", "/music.png")
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4")], "s")
+    p.refresh_position()
+    assert p.get_state().position_sec == 0.0
+
+
+# ---- end-file reason 필터 (loadfile 교체가 유발하는 spurious advance 방지) ----
+
+def test_end_file_non_eof_does_not_advance():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4"),
+                   Block(kind="video", video_id="/v/b.mp4")], "s")
+    assert v.loaded == "/v/a.mp4"
+    v.fire_end_file(reason="redirect")   # 파일 교체로 인한 end-file
+    assert v.loaded == "/v/a.mp4"        # advance 안 함
+    v.fire_end_file(reason="stop")
+    assert v.loaded == "/v/a.mp4"
+
+
+def test_end_file_eof_advances():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4"),
+                   Block(kind="video", video_id="/v/b.mp4")], "s")
+    v.fire_end_file(reason="eof")
+    assert v.loaded == "/v/b.mp4"        # 자연 종료 → 다음
+
+
+def test_get_state_resolves_title_and_current_id():
+    v, m = FakeMpv(), FakeMpv()
+    p = Player(v, m, "/s.png", "/mu.png",
+               resolve_title=lambda cid: {"vid1": "졸업식.mp4"}.get(cid, cid))
+    p.play_blocks([Block(kind="video", video_id="vid1")], "s")
+    st = p.get_state()
+    assert st.current_id == "vid1"          # content_id 원본
+    assert st.current_title == "졸업식.mp4"   # 파일명으로 변환
+
+
+def test_queue_view_order_and_current():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="a"),
+                   Block(kind="video", video_id="b")], "s")
+    view = p.queue_view()
+    assert [it["content_id"] for it in view] == ["a", "b"]
+    assert view[0]["current"] is True and view[1]["current"] is False
+
+
+def test_load_resets_pause():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4")], "s")
+    p.pause()
+    assert v.props.get("pause") in (True, "yes")
+    p.play_blocks([Block(kind="video", video_id="/v/b.mp4")], "s")  # 새 재생
+    assert v.props.get("pause") in (False, "no")   # pause 리셋됨
+
+
+def test_enqueue_to_idle_autoplays():
+    p, v, m = _p()
+    p.play_blocks([], "빈")   # 대기(standby)
+    assert p.status == "standby"
+    p.enqueue([Block(kind="video", video_id="/v/x.mp4")])
+    assert v.loaded == "/v/x.mp4"      # 바로 재생 시작
+    assert p.status == "playing"
+
+
+# ---- remove_content: 파일 삭제 시 라이브 큐 정리(미디어 삭제 연동) ----
+
+def test_remove_content_drops_matching_video_block():
+    p, v, m = _abc()
+    p.remove_content("/v/b.mp4")          # B 참조 블록 제거
+    assert [b.video_id for b in p.queue] == ["/v/a.mp4", "/v/c.mp4"]
+
+
+def test_remove_content_keeps_current_playing():
+    p, v, m = _abc()
+    p.jump_to(2)                          # 현재 = C
+    p.remove_content("/v/a.mp4")          # 앞의 A 삭제
+    assert p._current_block().video_id == "/v/c.mp4"
+    assert v.loaded == "/v/c.mp4"         # 재생물 안 바뀜
+
+
+def test_remove_content_current_block_advances():
+    p, v, m = _abc()
+    p.jump_to(1)                          # 현재 = B
+    p.remove_content("/v/b.mp4")          # 현재 블록 삭제 → 다음(C)
+    assert v.loaded == "/v/c.mp4"
+
+
+def test_remove_content_last_goes_standby():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4")], "s")
+    p.remove_content("/v/a.mp4")
+    assert v.loaded == "/standby.png"
+    assert p.status == "standby"
+
+
+def test_remove_content_no_match_is_noop():
+    p, v, m = _abc()
+    p.jump_to(1)
+    p.remove_content("/v/zzz.mp4")        # 큐에 없는 것
+    assert p.get_state().queue_len == 3
+    assert v.loaded == "/v/b.mp4"
+
+
+def test_remove_content_removes_photo_from_slideshow():
+    p, v, m = _p()
+    p.play_blocks(
+        [Block(kind="slideshow", music_id="/m/s.mp3",
+               photos=[("/p/1.jpg", 5.0), ("/p/2.jpg", 5.0)])], "s"
+    )
+    p.remove_content("/p/1.jpg")          # 사진 1장만 제거(블록은 유지)
+    assert p.queue[0].photos == [("/p/2.jpg", 5.0)]
+    assert p.get_state().queue_len == 1
+
+
+def test_remove_content_empty_slideshow_dropped():
+    p, v, m = _p()
+    p.play_blocks(
+        [Block(kind="slideshow", music_id=None, photos=[("/p/1.jpg", 5.0)])], "s"
+    )
+    p.remove_content("/p/1.jpg")          # 마지막 사진·음악 없음 → 블록 제거
+    assert p.get_state().queue_len == 0
+    assert v.loaded == "/standby.png"
+
+
+# ---- 큐 사진 표시시간 (#4) ----
+
+def test_queue_view_includes_photo_sec():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="slideshow", photos=[("p1", 7.0)])], "s")
+    view = p.queue_view()
+    assert view[0]["content_id"] == "p1" and view[0]["sec"] == 7.0
+
+
+def test_queue_view_sec_none_for_video():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="v1")], "s")
+    assert p.queue_view()[0]["sec"] is None
+
+
+def test_set_photo_duration_updates_block():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="slideshow", photos=[("p1", 5.0), ("p2", 5.0)])], "s")
+    p.set_photo_duration(0, 9)
+    assert p.queue[0].photos == [("p1", 9.0), ("p2", 9.0)]
+
+
+# ---- set_queue_blocks: 라이브 큐 재구성(현재 재생 유지) ----
+
+def test_set_queue_blocks_keeps_current_playing():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4"),
+                   Block(kind="video", video_id="/v/b.mp4")], "s")
+    p.jump_to(1)                       # 현재 = b
+    v.loaded = "SENTINEL"
+    p.set_queue_blocks([Block(kind="video", video_id="/v/a.mp4"),
+                        Block(kind="video", video_id="/v/b.mp4"),
+                        Block(kind="video", video_id="/v/c.mp4")])
+    assert p._current_block().video_id == "/v/b.mp4"  # 여전히 b
+    assert v.loaded == "SENTINEL"                       # 재로드 안 함(구조 동일)
+    assert p.get_state().queue_len == 3
+
+
+def test_set_queue_blocks_attach_music_reloads_current_photo():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="slideshow", music_id=None, photos=[("p1", 5.0)])], "s")
+    assert v.loaded == "p1"
+    # 같은 사진에 배경음악을 붙임 → 현재 블록 음악이 바뀜 → 재로드(음악 시작)
+    p.set_queue_blocks([Block(kind="slideshow", music_id="m1", photos=[("p1", 5.0)])])
+    assert m.loaded == "m1"
+
+
+def test_set_queue_blocks_current_gone_restarts():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4")], "s")
+    p.set_queue_blocks([Block(kind="video", video_id="/v/z.mp4")])
+    assert v.loaded == "/v/z.mp4"      # 이전 현재가 사라짐 → 처음부터
+
+
+def test_set_queue_blocks_empty_standby():
+    p, v, m = _p()
+    p.play_blocks([Block(kind="video", video_id="/v/a.mp4")], "s")
+    p.set_queue_blocks([])
+    assert v.loaded == "/standby.png"
+    assert p.status == "standby"

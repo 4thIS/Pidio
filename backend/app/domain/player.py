@@ -7,12 +7,13 @@
 mpv/USB 없이 FakeMpv(contracts.MpvClient) 주입으로 테스트된다.
 """
 import random
+import time
 
 from .contracts import PlayerState
 
 
 class Player:
-    def __init__(self, video, music, standby_image, music_screen_image, on_state_change=None, resolve_path=None):
+    def __init__(self, video, music, standby_image, music_screen_image, on_state_change=None, resolve_path=None, resolve_title=None):
         self.v = video
         self.m = music
         self.standby_image = standby_image
@@ -22,13 +23,19 @@ class Player:
         self.pos = -1          # order 상의 위치
         self.repeat = "off"
         self.shuffle = False
-        self.mode = "manual"
+        self.mode = "auto"       # 부팅 시 스케줄러가 평가하도록(수동 재생 시 manual로 전환)
         self.status = "standby"
         self.source_label = None
+        self.position_sec = 0.0
+        self.duration_sec = 0.0
         self._photo_idx = 0
+        self._photo_started = None  # 현재 사진 표시 시작 시각(진행바용, monotonic)
+        self.schedule_active = False        # 지금 예약이 걸려있는지(서비스가 갱신)
+        self.schedule_active_name = None
         self.on_state_change = on_state_change   # 상태 변경 콜백(SSE 방송용)
         self._resolve = resolve_path or (lambda cid: cid)  # content_id → 실제 파일 경로
-        self.v.on_end_file(lambda reason: self._on_end())
+        self._resolve_title = resolve_title or (lambda cid: cid)  # content_id → 표시 제목
+        self.v.on_end_file(lambda reason: self._on_end(reason))
 
     # ---- 재생 시작/이동 ----
     def play_blocks(self, blocks, source_label, repeat="off", shuffle=False, manual=True):
@@ -92,10 +99,16 @@ class Player:
 
     # ---- 큐 편집 (현재 재생 블록 유지) ----
     def enqueue(self, blocks):
+        was_idle = self.pos < 0 or not self.order
         cur = self._current_block()
         self.queue.extend(blocks)
         self._rebuild_order()
-        self._restore_pos(cur)
+        if was_idle and self.order and blocks:
+            new_first = len(self.queue) - len(blocks)   # 첫 새 블록의 큐 인덱스
+            self.pos = self.order.index(new_first)
+            self._load_current()   # 대기중이었으면 새 항목부터 바로 재생
+        else:
+            self._restore_pos(cur)
 
     def remove(self, index):
         if not (0 <= index < len(self.queue)):
@@ -121,17 +134,59 @@ class Player:
         self._rebuild_order()
         self._restore_pos(cur)
 
+    def remove_content(self, content_id):
+        """content_id 를 참조하는 블록을 큐에서 정리(파일 삭제와 연동).
+
+        - 동영상 블록: 그 content_id면 블록 제거.
+        - 슬라이드쇼: 배경음악이면 무음 처리, 사진이면 그 사진만 제외.
+          사진·음악이 모두 사라지면 블록 제거.
+        현재 재생 블록이 사라지면 다음 블록으로(없으면 대기).
+        """
+        cur = self._current_block()
+        kept = []
+        changed = False
+        for b in self.queue:
+            if b.kind == "video":
+                if b.video_id == content_id:
+                    changed = True
+                    continue
+            else:  # slideshow
+                if b.music_id == content_id:
+                    b.music_id = None
+                    changed = True
+                if b.photos and any(pid == content_id for pid, _ in b.photos):
+                    b.photos = [(pid, sec) for pid, sec in b.photos if pid != content_id]
+                    changed = True
+                if not b.music_id and not b.photos:
+                    continue  # 빈 슬라이드쇼 제거
+            kept.append(b)
+        if not changed:
+            return
+        cur_gone = cur is not None and all(cur is not b for b in kept)
+        self.queue = kept
+        self._rebuild_order()
+        if cur_gone:
+            if self.order:
+                self.pos = min(self.pos, len(self.order) - 1)
+                self._load_current()
+            else:
+                self.pos = -1
+                self._to_standby()
+        else:
+            self._restore_pos(cur)
+
     # ---- 상태 ----
     def get_state(self) -> PlayerState:
         b = self._current_block()
-        title = None
+        cid = None
         if b:
             if b.kind == "video":
-                title = b.video_id
+                cid = b.video_id
             elif b.photos:
-                title = b.photos[self._photo_idx][0]
+                cid = b.photos[self._photo_idx][0]
             else:
-                title = "음악"
+                cid = b.music_id
+        title = self._resolve_title(cid) if cid else None
         return PlayerState(
             status=self.status,
             mode=self.mode,
@@ -140,10 +195,84 @@ class Player:
             queue_len=len(self.queue),
             current_index=self.pos,
             current_title=title,
+            current_id=cid,
             source_label=self.source_label,
-            position_sec=0.0,   # 실시간 값은 Phase 10.2에서 mpv time-pos로 채움
-            duration_sec=0.0,
+            position_sec=self.position_sec,
+            duration_sec=self.duration_sec,
+            schedule_active=self.schedule_active,
+            schedule_active_name=self.schedule_active_name,
         )
+
+    def queue_view(self):
+        """재생 큐를 재생 순서대로 [{content_id, kind, current, sec}]. 큐 패널용.
+
+        sec: 사진 블록의 표시시간(초), 사진 아니면 None.
+        """
+        out = []
+        for i, oi in enumerate(self.order):
+            b = self.queue[oi]
+            sec = None
+            if b.kind == "video":
+                cid = b.video_id
+            elif b.photos:
+                cid = b.photos[0][0]
+                sec = b.photos[0][1]
+            else:
+                cid = b.music_id
+            out.append({"content_id": cid, "kind": b.kind, "current": i == self.pos, "sec": sec})
+        return out
+
+    def _primary_id(self, b):
+        if b is None:
+            return None
+        if b.kind == "video":
+            return b.video_id
+        if b.photos:
+            return b.photos[0][0]
+        return b.music_id
+
+    def set_queue_blocks(self, blocks):
+        """큐를 새 블록 구조로 교체(라이브 편집). 재생 중이던 항목은 최대한 유지.
+
+        - 현재 재생 블록과 '대표 content_id'가 같은 블록을 새 큐에서 찾아 이어감.
+        - 그 블록의 음악/사진이 바뀌었으면 다시 로드(배경음악 시작/정지 반영).
+        - 못 찾으면 처음부터(재생 중이었으면), 큐가 비면 대기화면.
+        """
+        was_playing = self.status == "playing"
+        cur = self._current_block()
+        old_primary = self._primary_id(cur)
+        old_music = cur.music_id if cur else None
+        old_photos = list(cur.photos) if cur else None
+        self.queue = list(blocks)
+        self._rebuild_order()
+        if not self.order:
+            self.pos = -1
+            self._to_standby()
+            return
+        new_pos = None
+        for i, oi in enumerate(self.order):
+            if self._primary_id(self.queue[oi]) == old_primary:
+                new_pos = i
+                break
+        if new_pos is None:
+            self.pos = 0
+            # 재생 중이었거나, 대기(standby)였다가 항목이 생기면 재생 시작
+            if was_playing or old_primary is None:
+                self._load_current()
+            return
+        self.pos = new_pos
+        newb = self.queue[self.order[new_pos]]
+        changed = (newb.music_id != old_music) or (list(newb.photos) != (old_photos or []))
+        if was_playing and changed:
+            self._load_current()
+
+    def set_photo_duration(self, index, sec):
+        """큐 index 블록(사진 슬라이드쇼)의 표시시간을 갱신."""
+        if not (0 <= index < len(self.queue)):
+            return
+        b = self.queue[index]
+        if b.kind == "slideshow" and b.photos:
+            b.photos = [(pid, float(sec)) for pid, _ in b.photos]
 
     # ---- 내부 ----
     def _rebuild_order(self):
@@ -177,6 +306,10 @@ class Player:
             return
         self.status = "playing"
         self._photo_idx = 0
+        self.position_sec = 0.0
+        self.duration_sec = 0.0
+        self.v.set_property("pause", False)   # 이전 일시정지 상태가 남지 않게
+        self.m.set_property("pause", False)
         if b.kind == "video":
             self.m.stop()
             extra = {"loop-file": "inf"} if self.repeat == "one" else None
@@ -189,6 +322,7 @@ class Player:
             if b.photos:
                 pid, sec = b.photos[0]
                 self.v.loadfile(self._resolve(pid), {"image-display-duration": sec})
+                self._photo_started = time.monotonic()
             else:
                 self.v.loadfile(
                     self.music_screen_image, {"image-display-duration": "inf"}
@@ -199,17 +333,48 @@ class Player:
         self.v.loadfile(self.standby_image, {"image-display-duration": "inf"})
         self.m.stop()
 
+    def refresh_position(self):
+        """현재 재생 위치/길이를 진행바용으로 캐시.
+
+        - 사진: 표시시간(블록에 저장된 초)을 길이로, 경과(벽시계)를 위치로 — mpv가
+          이미지의 time-pos/duration 을 안 주는 경우가 많아 벽시계로 계산.
+        - 음악만(음악화면): 음악 채널의 재생 위치/길이.
+        - 동영상: 화면 mpv 의 time-pos/duration.
+        """
+        b = self._current_block()
+        if b is not None and b.kind == "slideshow":
+            if b.photos:
+                idx = min(self._photo_idx, len(b.photos) - 1)
+                sec = float(b.photos[idx][1] or 0)
+                started = self._photo_started if self._photo_started is not None else time.monotonic()
+                self.duration_sec = sec
+                self.position_sec = max(0.0, min(time.monotonic() - started, sec))
+                return
+            if b.music_id:
+                pos = self.m.get_property("time-pos")
+                dur = self.m.get_property("duration")
+                self.position_sec = float(pos) if pos is not None else 0.0
+                self.duration_sec = float(dur) if dur is not None else 0.0
+                return
+        pos = self.v.get_property("time-pos")
+        dur = self.v.get_property("duration")
+        self.position_sec = float(pos) if pos is not None else 0.0
+        self.duration_sec = float(dur) if dur is not None else 0.0
+
     def _notify(self):
         """상태 변경을 외부(웹 SSE)에 알린다. 미설정이면 무시."""
         if self.on_state_change:
             self.on_state_change()
 
-    def _on_end(self):
+    def _on_end(self, reason="eof"):
         """mpv 재생 종료 이벤트: 슬라이드쇼면 다음 사진, 아니면 다음 블록.
 
-        라우터를 거치지 않는 자동 전환이므로 여기서 on_state_change 를 호출해
-        '지금 재생 중'이 즉시 갱신되게 한다(SSE).
+        자연 종료(eof)·오류(error)에만 진행한다. loadfile 교체가 유발하는
+        stop/redirect 등의 end-file은 무시해야 spurious advance(연쇄 전환)를 막는다.
+        라우터를 거치지 않는 자동 전환이므로 on_state_change 로 '지금 재생 중'을 즉시 갱신(SSE).
         """
+        if reason not in ("eof", "error"):
+            return
         b = self._current_block()
         if (
             b
@@ -220,6 +385,7 @@ class Player:
             self._photo_idx += 1
             pid, sec = b.photos[self._photo_idx]
             self.v.loadfile(self._resolve(pid), {"image-display-duration": sec})
+            self._photo_started = time.monotonic()
         else:
             self._advance()
         self._notify()

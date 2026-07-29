@@ -40,13 +40,21 @@ def selection_to_blocks(conn, content_ids) -> list[Block]:
 # ---- 플레이리스트 CRUD ----
 
 def create_playlist(conn, name) -> int:
+    nxt = conn.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM playlists").fetchone()[0]
     cur = conn.execute(
-        "INSERT INTO playlists(name, repeat_mode, shuffle, created_at, updated_at) "
-        "VALUES(?, 'off', 0, ?, ?)",
-        (name, _now(), _now()),
+        "INSERT INTO playlists(name, repeat_mode, shuffle, sort_order, created_at, updated_at) "
+        "VALUES(?, 'off', 0, ?, ?, ?)",
+        (name, nxt, _now(), _now()),
     )
     conn.commit()
     return cur.lastrowid
+
+
+def reorder_playlists(conn, ordered_ids) -> None:
+    """드래그 재정렬: 주어진 id 순서대로 sort_order 재부여."""
+    for pos, pid in enumerate(ordered_ids):
+        conn.execute("UPDATE playlists SET sort_order=? WHERE id=?", (pos, pid))
+    conn.commit()
 
 
 def update_playlist(conn, playlist_id, name, repeat_mode, shuffle, blocks) -> None:
@@ -73,6 +81,41 @@ def update_playlist(conn, playlist_id, name, repeat_mode, shuffle, blocks) -> No
     conn.commit()
 
 
+def append_selection(conn, playlist_id, content_ids) -> None:
+    """전체목록 선택 항목을 플리 끝에 블록으로 추가(기존 블록 보존)."""
+    row = conn.execute(
+        "SELECT COALESCE(MAX(position), -1) FROM playlist_blocks WHERE playlist_id=?",
+        (playlist_id,),
+    ).fetchone()
+    pos = row[0] + 1
+    for cid in content_ids:
+        m = media_repo.get_media(conn, cid)
+        if not m:
+            continue
+        if m["media_type"] == "video":
+            conn.execute(
+                "INSERT INTO playlist_blocks(playlist_id, position, kind, video_id) "
+                "VALUES(?,?,'video',?)",
+                (playlist_id, pos, cid),
+            )
+        else:
+            music_id = cid if m["media_type"] == "music" else None
+            cur = conn.execute(
+                "INSERT INTO playlist_blocks(playlist_id, position, kind, music_id) "
+                "VALUES(?,?,'slideshow',?)",
+                (playlist_id, pos, music_id),
+            )
+            if m["media_type"] == "photo":
+                conn.execute(
+                    "INSERT INTO block_photos(block_id, position, photo_id, duration_sec) "
+                    "VALUES(?,0,?,NULL)",
+                    (cur.lastrowid, cid),
+                )
+        pos += 1
+    conn.execute("UPDATE playlists SET updated_at=? WHERE id=?", (_now(), playlist_id))
+    conn.commit()
+
+
 def delete_playlist(conn, playlist_id) -> None:
     conn.execute("DELETE FROM playlists WHERE id=?", (playlist_id,))
     conn.commit()
@@ -94,7 +137,7 @@ def get_playlist(conn, playlist_id):
 
 def list_playlists(conn):
     out = []
-    for pl in conn.execute("SELECT * FROM playlists ORDER BY id").fetchall():
+    for pl in conn.execute("SELECT * FROM playlists ORDER BY sort_order, id").fetchall():
         blocks = blocks_of(conn, pl["id"])
         total = 0.0
         covers = []

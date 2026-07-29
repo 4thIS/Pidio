@@ -12,17 +12,22 @@ defineProps({ item: Object })
     <video
       v-if="item.media_type === 'video'"
       class="media"
+      draggable="false"
       :src="`/stream/${item.content_id}`"
+      :poster="`/thumb/${item.content_id}`"
       muted
       autoplay
       loop
       playsinline
+      preload="metadata"
     ></video>
 
+    <!-- 사진: 무거운 원본(/stream) 대신 이미 캐시된 썸네일(/thumb) 사용 → 즉시 표시 -->
     <img
       v-else-if="item.media_type === 'photo'"
       class="media"
-      :src="`/stream/${item.content_id}`"
+      draggable="false"
+      :src="`/thumb/${item.content_id}`"
       alt=""
     />
 

@@ -67,3 +67,15 @@ def test_list_media_filters_available_and_type(tmp_path):
     assert ids == {"v1"}  # gone 제외, photo 제외
     allm = mr.list_media(c, None)
     assert {m["content_id"] for m in allm} == {"v1", "p1"}
+
+
+def test_delete_media_removes_row_and_refs(tmp_path):
+    from app.domain import playlist_repo as pr
+    c = _conn(tmp_path)
+    mr.upsert_media(c, "v1", "video", "a.mp4", "videos/a.mp4")
+    pid = pr.create_playlist(c, "x")
+    pr.update_playlist(c, pid, name="x", repeat_mode="off", shuffle=0,
+                       blocks=[{"kind": "video", "video_id": "v1"}])
+    mr.delete_media(c, "v1")
+    assert mr.get_media(c, "v1") is None
+    assert c.execute("SELECT COUNT(*) FROM playlist_blocks").fetchone()[0] == 0

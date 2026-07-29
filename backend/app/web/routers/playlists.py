@@ -32,6 +32,16 @@ def create_playlist(body: CreateBody, request: Request) -> dict:
     return {"id": pid}
 
 
+class ReorderBody(BaseModel):
+    ids: list[int]
+
+
+@router.post("/reorder")
+def reorder(body: ReorderBody, request: Request) -> dict:
+    playlist_repo.reorder_playlists(_db(request), body.ids)
+    return {"ok": True}
+
+
 @router.get("/{playlist_id}")
 def get_playlist(playlist_id: int, request: Request) -> dict:
     pl = playlist_repo.get_playlist(_db(request), playlist_id)
@@ -76,4 +86,11 @@ def play_playlist(playlist_id: int, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="not found")
     deps.service.play_playlist(playlist_id, manual=True)
     request.app.state.hub.publish(deps.player.get_state())
+    return {"ok": True}
+
+
+@router.post("/{playlist_id}/add")
+async def add_to_playlist(playlist_id: int, request: Request) -> dict:
+    data = await request.json()
+    playlist_repo.append_selection(_db(request), playlist_id, data.get("content_ids", []))
     return {"ok": True}

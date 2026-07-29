@@ -10,9 +10,55 @@ from __future__ import annotations
 import asyncio
 import os
 
-from app.domain import scanner
+from pathlib import Path
+
+from app.domain import media_repo, scanner
+from app.web import media_tools
 
 _TICK_SECONDS = 60
+
+
+def process_added(deps, added_ids) -> None:
+    """스캔으로 새로 발견된 파일에 길이/썸네일 생성(업로드 안 거친 USB 파일용)."""
+    if not added_ids:
+        return
+    thumb_dir = Path(deps.media_root) / ".pidio" / "thumbs"
+    thumb_dir.mkdir(parents=True, exist_ok=True)
+    for cid in added_ids:
+        m = media_repo.get_media(deps.db, cid)
+        if not m or not m["rel_path"]:
+            continue
+        import os as _os
+        path = _os.path.join(deps.media_root, m["rel_path"])
+        if m["media_type"] in ("video", "music"):
+            dur = media_tools.probe_duration(path)
+            if dur is not None:
+                media_repo.upsert_media(deps.db, cid, m["media_type"],
+                                        m["original_name"], m["rel_path"], duration=dur)
+        if m["media_type"] in ("video", "photo"):
+            thumb = thumb_dir / f"{cid}.jpg"
+            if not thumb.exists():
+                # 사진은 정지 이미지라 탐색(-ss) 없이(at_sec=0) 첫 프레임 추출
+                at = 1.0 if m["media_type"] == "video" else 0.0
+                media_tools.make_thumbnail(path, str(thumb), at_sec=at)
+
+
+def backfill_thumbnails(deps) -> int:
+    """썸네일 없는 기존 동영상/사진에 썸네일 생성(부팅 시 1회). 생성한 개수 반환."""
+    thumb_dir = Path(deps.media_root) / ".pidio" / "thumbs"
+    thumb_dir.mkdir(parents=True, exist_ok=True)
+    made = 0
+    for mt, at in (("video", 1.0), ("photo", 0.0)):
+        for m in media_repo.list_media(deps.db, mt):
+            if not m["rel_path"]:
+                continue
+            thumb = thumb_dir / f"{m['content_id']}.jpg"
+            if thumb.exists():
+                continue
+            path = os.path.join(deps.media_root, m["rel_path"])
+            if media_tools.make_thumbnail(path, str(thumb), at_sec=at):
+                made += 1
+    return made
 
 
 def startup_scan(deps) -> int:
@@ -23,7 +69,10 @@ def startup_scan(deps) -> int:
     """
     if not os.path.isdir(deps.media_root):
         return 0
-    return scanner.scan_library(deps.db, deps.media_root)["seen"]
+    result = scanner.scan_library(deps.db, deps.media_root)
+    process_added(deps, result["added"])
+    backfill_thumbnails(deps)  # 이전에 실패했던 사진 썸네일 등 보충
+    return result["seen"]
 
 
 def tick(deps, hub, now=None) -> None:
@@ -36,7 +85,8 @@ def maybe_rescan(deps, was_mounted: bool) -> bool:
     """USB 미마운트→마운트 전환 시 재스캔. 현재 마운트 여부 반환."""
     mounted = os.path.isdir(deps.media_root)
     if mounted and not was_mounted:
-        scanner.scan_library(deps.db, deps.media_root)
+        result = scanner.scan_library(deps.db, deps.media_root)
+        process_added(deps, result["added"])
     return mounted
 
 
@@ -48,5 +98,23 @@ async def run_loop(deps, hub, interval: int = _TICK_SECONDS) -> None:
             was_mounted = maybe_rescan(deps, was_mounted)
             tick(deps, hub)
             await asyncio.sleep(interval)
+    except asyncio.CancelledError:
+        pass
+
+
+def position_tick(deps, hub) -> None:
+    """재생 중이면 time-pos/duration 갱신 후 상태 방송(진행바)."""
+    if deps.player.status == "playing":
+        deps.player.refresh_position()
+        hub.publish(deps.player.get_state())
+
+
+async def run_position_loop(deps, hub, interval: float = 1.0) -> None:
+    """1초 주기로 진행바 갱신 방송. mpv get_property는 블로킹이라 executor로."""
+    loop = asyncio.get_event_loop()
+    try:
+        while True:
+            await asyncio.sleep(interval)
+            await loop.run_in_executor(None, position_tick, deps, hub)
     except asyncio.CancelledError:
         pass

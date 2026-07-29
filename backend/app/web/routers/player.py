@@ -8,9 +8,34 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from app.domain import media_repo, playlist_repo
+from app.domain.service import _block_to_dict
 from app.web.auth import require_session
 
 router = APIRouter(prefix="/api", tags=["player"], dependencies=[Depends(require_session)])
+
+
+@router.get("/player/queue")
+def player_queue(request: Request) -> dict:
+    deps = request.app.state.deps
+    items = []
+    for it in deps.player.queue_view():
+        m = media_repo.get_media(deps.db, it["content_id"])
+        items.append({
+            "content_id": it["content_id"],
+            "title": (m["custom_title"] or m["original_name"]) if m else it["content_id"],
+            "thumb_url": (f"/thumb/{it['content_id']}"
+                          if m and m["media_type"] != "music" else None),
+            "kind": it["kind"],
+            "media_type": m["media_type"] if m else None,
+            "photo_sec": it["sec"],
+            "current": it["current"],
+        })
+    src = None
+    pid = deps.service.current_source_playlist_id
+    if pid is not None:
+        src = next((p for p in playlist_repo.list_playlists(deps.db) if p["id"] == pid), None)
+    return {"source_playlist": src, "items": items}
 
 # player 의 인자 없는 단순 동작.
 _SIMPLE = {
@@ -99,6 +124,57 @@ def queue_remove(body: RemoveBody, request: Request) -> dict:
     return {"ok": True}
 
 
+class PhotoSecBody(BaseModel):
+    index: int
+    sec: float
+
+
+@router.post("/player/queue/photo_sec")
+def queue_photo_sec(body: PhotoSecBody, request: Request) -> dict:
+    request.app.state.deps.player.set_photo_duration(body.index, body.sec)
+    _publish(request)
+    return {"ok": True}
+
+
+class SaveQueueBody(BaseModel):
+    name: str = "새 목록"
+
+
+@router.post("/player/queue/save")
+def queue_save(body: SaveQueueBody, request: Request) -> dict:
+    deps = request.app.state.deps
+    pid = deps.service.save_queue_as_playlist(body.name.strip() or "새 목록")
+    return {"id": pid}
+
+
+@router.get("/player/queue/blocks")
+def queue_blocks(request: Request) -> dict:
+    """현재 큐를 블록 구조로 반환(타임라인 에디터 시드용)."""
+    p = request.app.state.deps.player
+    return {"blocks": [_block_to_dict(b) for b in p.queue],
+            "repeat_mode": p.repeat, "shuffle": bool(p.shuffle)}
+
+
+class SetBlocksBody(BaseModel):
+    blocks: list[dict]
+
+
+@router.post("/player/queue/set_blocks")
+def queue_set_blocks(body: SetBlocksBody, request: Request) -> dict:
+    """라이브 큐를 새 블록 구조로 교체(현재 재생목록 타임라인 편집)."""
+    from app.domain.contracts import Block
+    blks = []
+    for b in body.blocks:
+        if b.get("kind") == "video":
+            blks.append(Block(kind="video", video_id=b.get("video_id")))
+        else:
+            photos = [(p["photo_id"], float(p.get("duration_sec") or 5)) for p in b.get("photos", [])]
+            blks.append(Block(kind="slideshow", music_id=b.get("music_id"), photos=photos))
+    request.app.state.deps.player.set_queue_blocks(blks)
+    _publish(request)
+    return {"ok": True}
+
+
 # ---- 단순 동작 (마지막 선언) ----
 
 @router.post("/player/{action}")
@@ -107,5 +183,15 @@ def player_action(action: str, request: Request) -> dict:
     if fn is None:
         raise HTTPException(status_code=404, detail="unknown action")
     fn(request.app.state.deps)
+    _publish(request)
+    return {"ok": True}
+
+
+@router.post("/player/queue/add")
+async def queue_add(request: Request) -> dict:
+    deps = request.app.state.deps
+    data = await request.json()
+    blocks = playlist_repo.selection_to_blocks(deps.db, data.get("content_ids", []))
+    deps.player.enqueue(blocks)
     _publish(request)
     return {"ok": True}

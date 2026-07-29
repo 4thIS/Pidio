@@ -34,6 +34,9 @@ class PlayerState:
     source_label: Optional[str]     # 예 "졸업식 플리 (3/12)" 또는 "전체 선택"
     position_sec: float
     duration_sec: float
+    current_id: Optional[str] = None   # 현재 항목 content_id(썸네일용)
+    schedule_active: bool = False      # 지금 시각에 걸린 예약이 있는가(모드 무관)
+    schedule_active_name: Optional[str] = None  # 그 예약 플리 이름
 
 
 class MpvClient(Protocol):
@@ -44,6 +47,7 @@ class MpvClient(Protocol):
     def stop(self) -> None: ...
     # end-file 이벤트 콜백 등록(자연 종료 통지)
     def on_end_file(self, callback) -> None: ...
+    def get_property(self, name: str, timeout: float = 1.0): ...
 
 
 class PlayerController(Protocol):

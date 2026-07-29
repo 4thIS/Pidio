@@ -1,369 +1,245 @@
 <script setup>
-// D-4 플레이리스트 상세 — 헤더 + 음악 라인 편집기 + 저장(PUT).
+// 플레이리스트/재생목록 편집 모달 — 공용 Timeline 에디터를 감싸는 셸.
+// id 있으면 그 플리를 편집(즉시 저장). fromQueue 면 현재 큐를 시드로 편집 → 새 플리로 저장.
 import { ref, computed, onMounted } from 'vue'
-import MusicLane from './MusicLane.vue'
+import Timeline from './Timeline.vue'
 import ScheduleModal from './ScheduleModal.vue'
 import { scheduleSummary } from '../schedule.js'
-import { playlists as plApi, media as mediaApi } from '../api.js'
-import { MOCK_MEDIA, MOCK_PLAYLIST_DETAIL } from '../mock.js'
-import { normalizeBlocks, serializeBlocks, newSlideshow, newVideo, newPhoto } from '../playlistModel.js'
-import { typeEmoji, thumbGradient } from '../mediaView.js'
-import { formatTime } from '../format.js'
+import { playlists as plApi, media as mediaApi, folders as folderApi, player as playerApi } from '../api.js'
+import { dialog } from '../dialog.js'
+import { MOCK_MEDIA } from '../mock.js'
 
-const props = defineProps({ id: [Number, String] })
-const emit = defineEmits(['close'])
+const props = defineProps({
+  id: { type: [Number, String], default: null },
+  justCreated: Boolean,
+  fromQueue: Boolean,
+})
+const emit = defineEmits(['close', 'changed'])
 
-const pl = ref(null)
-const blocks = ref([])
+const pl = ref({ name: '', repeat_mode: 'off', shuffle: false, schedule: null })
+const initialBlocks = ref([])
+const latestBlocks = ref([])
 const allMedia = ref([])
 const mediaMap = ref({})
+const pickerFolders = ref([])
 const usingMock = ref(false)
 const loading = ref(true)
-const saving = ref(false)
 const notice = ref('')
-const picker = ref(null) // { kind:'video'|'music'|'photo', block? }
+const editingName = ref(false)
+const nameDraft = ref('')
 
 onMounted(load)
 async function load() {
   loading.value = true
-  // 미디어(제목/피커용). 서버가 정상 응답하면 빈 목록이라도 그대로 사용
-  // (가짜 미디어를 쓰면 저장 시 존재하지 않는 id 참조로 실패하므로 catch 에서만 폴백).
   let list
   try {
     const data = await mediaApi.list('all')
     list = Array.isArray(data) ? data : []
   } catch {
+    usingMock.value = true
     list = MOCK_MEDIA
   }
   allMedia.value = list
   mediaMap.value = Object.fromEntries(list.map((m) => [m.content_id, m]))
-  // 상세
-  let d
-  try {
-    d = await plApi.get(props.id)
-  } catch {
-    usingMock.value = true
-    d = MOCK_PLAYLIST_DETAIL[props.id] || {
-      id: props.id, name: '새 목록', repeat_mode: 'off', shuffle: false, schedule: null, blocks: [],
+  try { pickerFolders.value = await folderApi.list() } catch { pickerFolders.value = [] }
+
+  let blocks = []
+  if (props.fromQueue) {
+    try {
+      const d = await playerApi.queueBlocks()
+      blocks = d.blocks || []
+      pl.value = { name: '재생목록', repeat_mode: d.repeat_mode || 'off', shuffle: !!d.shuffle, schedule: null }
+    } catch {
+      pl.value = { name: '재생목록', repeat_mode: 'off', shuffle: false, schedule: null }
+    }
+  } else {
+    try {
+      const d = await plApi.get(props.id)
+      pl.value = { name: d.name, repeat_mode: d.repeat_mode, shuffle: d.shuffle, schedule: d.schedule || null }
+      blocks = d.blocks || []
+    } catch {
+      usingMock.value = true
+      pl.value = { name: '새 목록', repeat_mode: 'off', shuffle: false, schedule: null }
     }
   }
-  pl.value = { id: d.id, name: d.name, repeat_mode: d.repeat_mode, shuffle: d.shuffle, schedule: d.schedule || null }
-  blocks.value = normalizeBlocks(d.blocks)
+  initialBlocks.value = blocks
+  latestBlocks.value = blocks
   loading.value = false
 }
 
-// ---- 헤더 컨트롤 ----
-function cycleRepeat() {
-  const order = { off: 'all', all: 'one', one: 'off' }
-  pl.value.repeat_mode = order[pl.value.repeat_mode]
+// ---- Timeline 변경 → 저장 ----
+let saved = false
+function onBlocks(blocks) {
+  latestBlocks.value = blocks
+  if (!props.fromQueue && props.id != null) persist()
 }
-function toggleShuffle() {
-  pl.value.shuffle = !pl.value.shuffle
-}
-async function playNow() {
+async function persist() {
   try {
-    await plApi.play(props.id)
-    notify('재생을 요청했습니다.')
-  } catch {
-    notify('재생 요청을 처리하지 못했습니다.')
-  }
-}
-
-const scheduleText = computed(() => scheduleSummary(pl.value?.schedule))
-
-// ---- 예약 모달 ----
-const schedOpen = ref(false)
-function onSchedSaved(sched, opts) {
-  pl.value.schedule = sched
-  schedOpen.value = false
-  notify(opts?.offline ? '예약 저장됨(서버 미연결 · 화면만 반영).' : '예약을 저장했습니다.')
-}
-function onSchedRemoved(opts) {
-  pl.value.schedule = null
-  schedOpen.value = false
-  notify(opts?.offline ? '예약 삭제됨(서버 미연결 · 화면만 반영).' : '예약을 삭제했습니다.')
-}
-
-// ---- 편집 ----
-function addMusicLane() {
-  blocks.value.push(newSlideshow(null))
-}
-function removeBlock(block) {
-  blocks.value = blocks.value.filter((b) => b !== block)
-}
-function openPicker(kind, block = null) {
-  picker.value = { kind, block }
-}
-const pickerItems = computed(() => {
-  if (!picker.value) return []
-  const t = picker.value.kind === 'music' ? 'music' : picker.value.kind === 'video' ? 'video' : 'photo'
-  return allMedia.value.filter((m) => m.media_type === t)
-})
-function choose(id) {
-  const p = picker.value
-  if (p.kind === 'video') blocks.value.push(newVideo(id))
-  else if (p.kind === 'music') p.block.music_id = id
-  else if (p.kind === 'photo') p.block.photos.push(newPhoto(id))
-  picker.value = null
-}
-
-// ---- 저장 ----
-async function save() {
-  saving.value = true
-  const payload = {
-    name: pl.value.name,
-    repeat_mode: pl.value.repeat_mode,
-    shuffle: pl.value.shuffle,
-    blocks: serializeBlocks(blocks.value),
-  }
-  try {
-    await plApi.save(props.id, payload)
-    notify('저장했습니다.')
+    await plApi.save(props.id, {
+      name: pl.value.name, repeat_mode: pl.value.repeat_mode,
+      shuffle: pl.value.shuffle, blocks: latestBlocks.value,
+    })
+    saved = true
   } catch (e) {
-    if (usingMock.value) notify('저장됨(서버 미연결 · 화면만 반영).')
-    else notify(e?.message || '저장에 실패했습니다.')  // 서버의 사유(예: 없는 미디어 참조) 노출
-  } finally {
-    saving.value = false
+    if (!usingMock.value) notify(e?.message || '저장에 실패했습니다.')
   }
+}
+async function saveAsNew() {
+  const name = ((await dialog.prompt('새 플레이리스트로 저장', pl.value.name || '재생목록', { placeholder: '플레이리스트 이름' })) || '').trim()
+  if (!name) return
+  try {
+    const r = await plApi.create(name)
+    await plApi.save(r.id, {
+      name, repeat_mode: pl.value.repeat_mode, shuffle: pl.value.shuffle, blocks: latestBlocks.value,
+    })
+    emit('changed')
+    notify(`"${name}"으로 저장했습니다.`)
+    setTimeout(close, 700)
+  } catch (e) {
+    notify(e?.message || '저장에 실패했습니다.')
+  }
+}
+
+// ---- 헤더 ----
+function startEditName() { nameDraft.value = pl.value.name; editingName.value = true }
+function commitName() {
+  if (!editingName.value) return
+  editingName.value = false
+  const t = nameDraft.value.trim()
+  if (t && t !== pl.value.name) { pl.value.name = t; if (!props.fromQueue && props.id != null) persist() }
+}
+function cycleRepeat() {
+  pl.value.repeat_mode = { off: 'all', all: 'one', one: 'off' }[pl.value.repeat_mode]
+  if (!props.fromQueue && props.id != null) persist()
+}
+function toggleShuffle() { pl.value.shuffle = !pl.value.shuffle; if (!props.fromQueue && props.id != null) persist() }
+async function playNow() {
+  if (props.id == null) return
+  try { await plApi.play(props.id); notify('재생을 요청했습니다.') } catch { notify('재생 요청 실패.') }
+}
+const scheduleText = computed(() => scheduleSummary(pl.value?.schedule))
+const schedOpen = ref(false)
+function onSchedSaved(sched) { pl.value.schedule = sched; schedOpen.value = false; notify('예약을 저장했습니다.') }
+function onSchedRemoved() { pl.value.schedule = null; schedOpen.value = false; notify('예약을 삭제했습니다.') }
+
+async function close() {
+  if (props.justCreated && !props.fromQueue && latestBlocks.value.length === 0 && !saved) {
+    try { await plApi.remove(props.id) } catch { /* ignore */ }
+  }
+  emit('changed')
+  emit('close')
 }
 
 let nt = null
-function notify(msg) {
-  notice.value = msg
-  clearTimeout(nt)
-  nt = setTimeout(() => (notice.value = ''), 2800)
-}
+function notify(msg) { notice.value = msg; clearTimeout(nt); nt = setTimeout(() => (notice.value = ''), 2600) }
 </script>
 
 <template>
-  <div class="detail">
-    <div class="dbar">
-      <button class="back" @click="emit('close')">← 목록</button>
-      <div class="grow"></div>
-      <span v-if="notice" class="notice">{{ notice }}</span>
-      <button class="save" :disabled="saving" @click="save">{{ saving ? '저장 중…' : '💾 저장' }}</button>
-    </div>
-
-    <div v-if="loading" class="empty">불러오는 중…</div>
-
-    <template v-else>
-      <div class="dhead">
-        <span class="dt">{{ pl.name }}</span>
-        <button class="btn acc" @click="playNow">▶ 재생</button>
-        <button class="opt" :class="{ on: pl.repeat_mode !== 'off' }" @click="cycleRepeat">
-          {{ pl.repeat_mode === 'one' ? '🔂 한개반복' : pl.repeat_mode === 'all' ? '🔁 전체반복' : '🔁 반복꺼짐' }}
-        </button>
-        <button class="opt" :class="{ on: pl.shuffle }" @click="toggleShuffle">🔀 셔플</button>
+  <div class="pd-ov" @click.self="close">
+    <div class="sheet">
+      <div class="dbar">
+        <div v-if="editingName" class="nmwrap">
+          <input v-model="nameDraft" class="nmedit" @keyup.enter="commitName" @blur="commitName" @keyup.esc="editingName = false" />
+        </div>
+        <div v-else class="nmwrap" @dblclick="startEditName">
+          <span class="dt">{{ pl?.name }}</span>
+          <span v-if="fromQueue" class="qbadge">재생목록 편집</span>
+          <button class="pen" @click="startEditName" aria-label="이름 수정">✎</button>
+        </div>
         <div class="grow"></div>
-        <button class="opt" :class="{ on: pl.schedule }" @click="schedOpen = true">
-          🕒 {{ pl.schedule ? '예약됨' : '예약' }}
-        </button>
+        <span v-if="notice" class="notice">{{ notice }}</span>
+        <button v-if="fromQueue" class="saveq" @click="saveAsNew">💾 새 플리로 저장</button>
+        <button class="x" @click="close" aria-label="닫기">✕</button>
       </div>
 
-      <div v-if="scheduleText" class="banner">
-        🕒 <b>{{ scheduleText }}</b> 자동 재생
-        <button class="edit-sched" @click="schedOpen = true">✏ 예약 수정</button>
-      </div>
-      <p v-if="usingMock" class="mock">샘플 데이터 · 서버 미연결</p>
+      <div v-if="loading" class="empty">불러오는 중…</div>
 
-      <div class="lanes">
-        <MusicLane
-          v-for="b in blocks"
-          :key="b._key"
-          :block="b"
-          :media-map="mediaMap"
-          @pick-music="openPicker('music', $event)"
-          @add-photo="openPicker('photo', $event)"
-          @remove="removeBlock"
-        />
-        <div v-if="!blocks.length" class="empty">라인이 없습니다. 아래에서 추가하세요.</div>
-      </div>
-
-      <div class="addrow">
-        <button class="addbtn" @click="addMusicLane">＋ 음악 라인 추가</button>
-        <button class="addbtn" @click="openPicker('video')">＋ 동영상 추가</button>
-      </div>
-      <p class="hint">사진의 ⠿ 를 잡아 다른 음악 라인으로 끌어다 놓으면 배경음악이 바뀌어요.</p>
-    </template>
-
-    <!-- 예약 모달 -->
-    <ScheduleModal
-      v-if="schedOpen"
-      :playlist-id="id"
-      :model-value="pl.schedule"
-      @saved="onSchedSaved"
-      @removed="onSchedRemoved"
-      @close="schedOpen = false"
-    />
-
-    <!-- 미디어 피커 -->
-    <div v-if="picker" class="picker-ov" @click.self="picker = null">
-      <div class="picker">
-        <div class="ph-head">
-          <b>{{ picker.kind === 'video' ? '동영상' : picker.kind === 'music' ? '배경음악' : '사진' }} 선택</b>
-          <button class="x" @click="picker = null">✕</button>
-        </div>
-        <div class="ph-list">
-          <button v-if="picker.kind === 'music'" class="pick none" @click="picker.block.music_id = null; picker = null">
-            🔇 음악 없음
+      <template v-else>
+        <div class="ctrls">
+          <button v-if="!fromQueue" class="btn acc" @click="playNow">
+            <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="7,4.5 20,12 7,19.5" /></svg>
+            재생
           </button>
-          <button v-for="m in pickerItems" :key="m.content_id" class="pick" @click="choose(m.content_id)">
-            <span class="pt" :style="{ background: thumbGradient(m) }">{{ typeEmoji(m.media_type) }}</span>
-            <span class="pn">{{ m.title }}</span>
-            <span v-if="m.media_type !== 'photo'" class="pd">{{ formatTime(m.duration) }}</span>
+          <button class="opt ricon" :class="{ on: pl.repeat_mode !== 'off' }"
+                  :title="pl.repeat_mode === 'one' ? '한 개 반복' : pl.repeat_mode === 'all' ? '전체 반복' : '반복 꺼짐'"
+                  @click="cycleRepeat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" />
+              <polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" />
+            </svg>
+            <span v-if="pl.repeat_mode === 'one'" class="one">1</span>
+            {{ pl.repeat_mode === 'one' ? '한개반복' : pl.repeat_mode === 'all' ? '전체반복' : '반복' }}
           </button>
-          <div v-if="!pickerItems.length" class="empty">해당 유형의 미디어가 없습니다.</div>
+          <button class="opt" :class="{ on: pl.shuffle }" title="셔플" @click="toggleShuffle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="16 3 21 3 21 8" /><line x1="4" y1="20" x2="21" y2="3" />
+              <polyline points="21 16 21 21 16 21" /><line x1="15" y1="15" x2="21" y2="21" /><line x1="4" y1="4" x2="9" y2="9" />
+            </svg>
+            셔플
+          </button>
+          <div class="grow"></div>
+          <button v-if="!fromQueue" class="opt" :class="{ on: pl.schedule }" @click="schedOpen = true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+            </svg>
+            {{ pl.schedule ? '예약됨' : '예약' }}
+          </button>
         </div>
-      </div>
+        <div v-if="scheduleText" class="banner">🕒 <b>{{ scheduleText }}</b> 자동 재생</div>
+        <p class="tip">셀을 드래그해 순서를 바꾸고, <b>음악 셀을 사진 아래 “음악 줄”로 끌어다 놓으면</b> 그 사진의 배경음악이 됩니다. 노래 바 양끝을 잡아 여러 사진에 걸치면 노래 길이 ÷ 사진 수로 표시돼요.</p>
+
+        <div class="tlbox">
+          <Timeline
+            :blocks="initialBlocks"
+            :media-map="mediaMap"
+            :all-media="allMedia"
+            :picker-folders="pickerFolders"
+            @change="onBlocks"
+          />
+        </div>
+      </template>
+
+      <ScheduleModal
+        v-if="schedOpen"
+        :playlist-id="id"
+        :model-value="pl.schedule"
+        @saved="onSchedSaved"
+        @removed="onSchedRemoved"
+        @close="schedOpen = false"
+      />
     </div>
   </div>
 </template>
 
 <style scoped>
-.detail { min-height: 100%; }
-.dbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 11px 16px;
-  border-bottom: 1px solid var(--bd);
-  background: #151c21;
-}
-.back {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 7px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--bd);
-  background: var(--elev);
-  color: var(--text);
-}
+.modal-enter-active, .modal-leave-active { transition: opacity 0.18s ease; }
+.modal-enter-active .sheet, .modal-leave-active .sheet { transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
+.modal-enter-from .sheet, .modal-leave-to .sheet { transform: translateY(14px) scale(0.97); }
+.pd-ov { position: fixed; inset: 0; background: rgba(6, 9, 11, 0.66); backdrop-filter: blur(2px); display: grid; place-items: center; z-index: 25; padding: 24px; }
+.sheet { width: 860px; max-width: 100%; max-height: 88vh; overflow-y: auto; background: var(--bg); border: 1px solid var(--bd); border-radius: 16px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55); }
+.dbar { display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--bd); background: var(--topbar); border-radius: 16px 16px 0 0; position: sticky; top: 0; z-index: 4; }
+.nmwrap { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.dt { font-size: 16px; font-weight: 720; letter-spacing: -0.01em; }
+.qbadge { font-size: 10px; font-weight: 700; color: var(--teal); background: color-mix(in srgb, var(--teal) 15%, transparent); border-radius: 6px; padding: 2px 7px; }
+.pen { opacity: 0.55; border: none; background: transparent; color: var(--muted); font-size: 12px; }
+.nmwrap:hover .pen { opacity: 1; }
+.nmedit { background: var(--bg); border: 1px solid var(--teal); border-radius: 6px; color: var(--text); font-size: 15px; font-weight: 700; padding: 4px 8px; }
 .grow { flex: 1; }
 .notice { font-size: 11.5px; color: var(--teal); }
-.save {
-  font-size: 12px;
-  font-weight: 640;
-  padding: 8px 15px;
-  border-radius: 8px;
-  border: none;
-  background: var(--accent);
-  color: #fff;
-}
-.save:disabled { opacity: 0.6; }
-.dhead {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 14px 16px;
-  flex-wrap: wrap;
-}
-.dt { font-size: 17px; font-weight: 720; letter-spacing: -0.01em; }
-.btn {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 7px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--bd);
-  background: var(--elev);
-  color: var(--text);
-}
+.saveq { font-size: 12px; font-weight: 640; padding: 7px 13px; border-radius: 8px; border: none; background: var(--accent); color: #fff; }
+.x { border: none; background: var(--elev); color: var(--muted); font-size: 13px; width: 30px; height: 30px; border-radius: 8px; }
+.ctrls { display: flex; align-items: center; gap: 9px; padding: 13px 16px 4px; flex-wrap: wrap; }
+.btn { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--bd); background: var(--elev); color: var(--text); }
 .btn.acc { background: var(--accent); border-color: var(--accent); color: #fff; }
-.opt {
-  font-size: 11.5px;
-  font-weight: 600;
-  padding: 6px 11px;
-  border-radius: 8px;
-  border: 1px solid var(--bd);
-  background: var(--elev);
-  color: var(--muted);
-}
+.opt { position: relative; display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600; padding: 6px 11px; border-radius: 8px; border: 1px solid var(--bd); background: var(--elev); color: var(--muted); }
 .opt.on { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 50%, transparent); }
-.banner {
-  margin: 0 16px;
-  padding: 9px 13px;
-  border-radius: 9px;
-  font-size: 11.5px;
-  background: color-mix(in srgb, var(--teal) 13%, transparent);
-  border: 1px solid color-mix(in srgb, var(--teal) 40%, transparent);
-}
+.btn svg, .opt svg { width: 15px; height: 15px; flex: none; }
+.opt .one { position: absolute; left: 20px; top: 3px; font-size: 8px; font-weight: 800; line-height: 1; background: var(--accent); color: #fff; border-radius: 50%; width: 11px; height: 11px; display: grid; place-items: center; }
+.banner { margin: 8px 16px 0; padding: 8px 12px; border-radius: 9px; font-size: 11.5px; background: color-mix(in srgb, var(--teal) 13%, transparent); border: 1px solid color-mix(in srgb, var(--teal) 40%, transparent); }
 .banner b { color: var(--teal); }
-.edit-sched {
-  margin-left: 8px;
-  font-size: 10.5px;
-  border: 1px solid color-mix(in srgb, var(--teal) 45%, transparent);
-  background: transparent;
-  color: var(--teal);
-  border-radius: 6px;
-  padding: 2px 8px;
-}
-.mock {
-  margin: 10px 16px 0;
-  font-size: 10.5px;
-  color: var(--warn);
-  font-family: var(--font-mono);
-}
-.lanes {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px 16px 4px;
-}
-.addrow { display: flex; gap: 8px; padding: 8px 16px 4px; flex-wrap: wrap; }
-.addbtn {
-  font-size: 11.5px;
-  padding: 8px 13px;
-  border-radius: 8px;
-  border: 1px dashed var(--bd);
-  color: var(--muted);
-  background: transparent;
-}
-.hint { font-size: 11px; color: var(--faint); font-style: italic; padding: 4px 16px 20px; margin: 0; }
-.empty { color: var(--faint); font-size: 13px; padding: 18px; text-align: center; }
-
-/* picker */
-.picker-ov {
-  position: fixed;
-  inset: 0;
-  background: rgba(8, 11, 13, 0.7);
-  display: grid;
-  place-items: center;
-  z-index: 20;
-  padding: 20px;
-}
-.picker {
-  width: 380px;
-  max-width: 100%;
-  max-height: 70vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--sf);
-  border: 1px solid var(--bd);
-  border-radius: 13px;
-  overflow: hidden;
-}
-.ph-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--bd);
-}
-.ph-head .x { border: none; background: transparent; color: var(--faint); font-size: 14px; }
-.ph-list { overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
-.pick {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 9px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-}
-.pick:hover { background: var(--elev); border-color: var(--bd); }
-.pick .pt { width: 40px; height: 28px; border-radius: 5px; display: grid; place-items: center; font-size: 14px; flex: none; }
-.pick .pn { flex: 1; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pick .pd { font-family: var(--font-mono); font-size: 10.5px; color: var(--faint); }
-.pick.none { color: var(--muted); font-size: 12.5px; padding: 9px; }
+.tip { margin: 10px 16px 0; font-size: 11px; color: var(--faint); }
+.tip b { color: var(--teal); }
+.tlbox { padding: 12px 16px 16px; }
+.empty { color: var(--faint); font-size: 13px; padding: 24px; text-align: center; }
 </style>

@@ -1,39 +1,14 @@
 <script setup>
-// D-6 업로드 — 화면 아무 곳에 드롭 → 청크 업로드 + 진행률.
-// 백엔드 /api/upload/* 는 Task 7.2 로 완성되어 실제 업로드가 동작한다.
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+// D-6 업로드 — 파일 선택/드롭(라이브러리 영역에서 처리) → 청크 업로드 + 진행률.
+// 드롭 감지는 Library 가 담당하고(전체화면 아님), 여기선 실제 업로드 + 진행 패널만.
+import { ref, reactive } from 'vue'
 import { uploadFile, mediaTypeOf } from '../upload.js'
 import { ApiError } from '../api.js'
 
 const emit = defineEmits(['uploaded'])
 
-const dragging = ref(false)
 const jobs = reactive([]) // {name, percent, state:'up'|'done'|'err', msg}
-let depth = 0 // dragenter/leave 중첩 카운트
 const fileInput = ref(null)
-
-function onDragEnter(e) {
-  if (!hasFiles(e)) return
-  depth++
-  dragging.value = true
-}
-function onDragOver(e) {
-  if (hasFiles(e)) e.preventDefault() // drop 허용
-}
-function onDragLeave() {
-  depth = Math.max(0, depth - 1)
-  if (depth === 0) dragging.value = false
-}
-function onDrop(e) {
-  e.preventDefault()
-  depth = 0
-  dragging.value = false
-  const files = [...(e.dataTransfer?.files || [])]
-  if (files.length) start(files)
-}
-function hasFiles(e) {
-  return [...(e.dataTransfer?.types || [])].includes('Files')
-}
 
 function pick() {
   fileInput.value?.click()
@@ -69,40 +44,17 @@ async function start(files) {
             : '업로드 실패'
     }
   }
-  // 완료된 항목은 잠시 후 정리
   setTimeout(() => {
     for (let i = jobs.length - 1; i >= 0; i--) if (jobs[i].state === 'done') jobs.splice(i, 1)
   }, 4000)
 }
 
-onMounted(() => {
-  window.addEventListener('dragenter', onDragEnter)
-  window.addEventListener('dragover', onDragOver)
-  window.addEventListener('dragleave', onDragLeave)
-  window.addEventListener('drop', onDrop)
-})
-onBeforeUnmount(() => {
-  window.removeEventListener('dragenter', onDragEnter)
-  window.removeEventListener('dragover', onDragOver)
-  window.removeEventListener('dragleave', onDragLeave)
-  window.removeEventListener('drop', onDrop)
-})
-
-defineExpose({ pick })
+defineExpose({ pick, startFiles: start })
 </script>
 
 <template>
   <div>
     <input ref="fileInput" type="file" multiple hidden @change="onPicked" />
-
-    <!-- 드롭 오버레이 -->
-    <div v-if="dragging" class="drop-ov">
-      <div class="drop-in">
-        <div class="big">📥</div>
-        <div class="t">여기에 파일을 놓으세요</div>
-        <div class="s">동영상 · 사진 · 음악 · 여러 개 한꺼번에 OK</div>
-      </div>
-    </div>
 
     <!-- 진행률 패널 -->
     <div v-if="jobs.length" class="uplist">
@@ -121,26 +73,6 @@ defineExpose({ pick })
 </template>
 
 <style scoped>
-.drop-ov {
-  position: fixed;
-  inset: 0;
-  background: color-mix(in srgb, var(--accent) 20%, rgba(10, 13, 15, 0.82));
-  backdrop-filter: blur(2px);
-  display: grid;
-  place-items: center;
-  z-index: 50;
-  pointer-events: none;
-}
-.drop-in {
-  border: 2.5px dashed color-mix(in srgb, var(--accent) 70%, #fff);
-  border-radius: 16px;
-  padding: 34px 54px;
-  text-align: center;
-}
-.drop-in .big { font-size: 40px; }
-.drop-in .t { font-size: 16px; font-weight: 700; margin-top: 10px; }
-.drop-in .s { font-size: 12px; color: #e9c2cd; margin-top: 4px; }
-
 .uplist {
   position: fixed;
   right: 16px;

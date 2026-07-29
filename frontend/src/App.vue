@@ -1,22 +1,60 @@
 <script setup>
 // 앱 셸: 시작 시 세션 확인 → 로그인 화면 또는 메인.
 // 메인 진입 시 SSE(/events) 구독. 업로드는 화면 어디서나 드롭 가능.
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { store, connectEvents, disconnectEvents } from './store.js'
 import { auth } from './api.js'
 import Login from './components/Login.vue'
 import NowPlaying from './components/NowPlaying.vue'
+import PlayQueue from './components/PlayQueue.vue'
 import Playlists from './components/Playlists.vue'
 import Library from './components/Library.vue'
 import PlaylistDetail from './components/PlaylistDetail.vue'
 import Uploader from './components/Uploader.vue'
 import Settings from './components/Settings.vue'
+import DialogHost from './components/DialogHost.vue'
 
-// 간단 뷰 전환: 메인 ↔ 플레이리스트 상세 ↔ 설정 (라우터 없이)
+// 간단 뷰 전환: 메인 위에 플레이리스트 상세(모달) ↔ 설정 (라우터 없이)
 const detailId = ref(null)
+const detailJustCreated = ref(false)
+const queueEditor = ref(false) // 현재 재생목록 편집 모달
 const showSettings = ref(false)
+
+function openDetail(payload) {
+  // payload: 숫자 id(카드 클릭) 또는 {id, justCreated}(새 목록 생성)
+  if (payload !== null && typeof payload === 'object') {
+    detailId.value = payload.id
+    detailJustCreated.value = !!payload.justCreated
+  } else {
+    detailId.value = payload
+    detailJustCreated.value = false
+  }
+}
+function closeDetail() {
+  detailId.value = null
+  detailJustCreated.value = false
+  queueEditor.value = false
+}
+function onUploadFiles(files) {
+  uploader.value?.startFiles(files)
+}
+// 라이브러리 밖에 파일을 떨어뜨려도 브라우저가 파일을 열지 않도록 전역 가드(업로드는 라이브러리에서만).
+function guardFileDrag(e) {
+  if ([...(e.dataTransfer?.types || [])].includes('Files')) e.preventDefault()
+}
+onMounted(() => {
+  window.addEventListener('dragover', guardFileDrag)
+  window.addEventListener('drop', guardFileDrag)
+  // 저장된 테마 적용(기본 다크)
+  document.documentElement.dataset.theme = localStorage.getItem('pidio-theme') || 'dark'
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('dragover', guardFileDrag)
+  window.removeEventListener('drop', guardFileDrag)
+})
 const uploader = ref(null)
 const libKey = ref(0) // 업로드 완료 시 목록 새로고침
+const plKey = ref(0)  // 미디어 삭제 시 플레이리스트 목록 새로고침
 
 onMounted(async () => {
   try {
@@ -60,17 +98,32 @@ async function logout() {
     </div>
 
     <NowPlaying />
+    <PlayQueue @saved="plKey++" />
 
-    <Settings v-if="showSettings" @close="showSettings = false" />
-
-    <PlaylistDetail v-else-if="detailId !== null" :id="detailId" @close="detailId = null" />
-
-    <div v-else class="rest">
-      <Playlists @open="detailId = $event" />
-      <Library :key="libKey" />
+    <div class="rest">
+      <Playlists :key="plKey" @open="openDetail" />
+      <Library :key="libKey" @media-deleted="plKey++" @upload-files="onUploadFiles" />
     </div>
 
+    <!-- 설정: 화면 위에 모달로 -->
+    <Transition name="modal">
+      <Settings v-if="showSettings" @close="showSettings = false" />
+    </Transition>
+
+    <!-- 플리 상세/재생목록 편집: 원래 화면 위에 박스로 열림(타임라인 에디터) -->
+    <Transition name="modal">
+      <PlaylistDetail
+        v-if="detailId !== null || queueEditor"
+        :id="queueEditor ? null : detailId"
+        :from-queue="queueEditor"
+        :just-created="detailJustCreated"
+        @close="closeDetail"
+        @changed="plKey++"
+      />
+    </Transition>
+
     <Uploader ref="uploader" @uploaded="libKey++" />
+    <DialogHost />
   </main>
 </template>
 
@@ -93,7 +146,7 @@ async function logout() {
   gap: 12px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--bd);
-  background: #151c21;
+  background: var(--topbar);
 }
 .logo {
   display: flex;

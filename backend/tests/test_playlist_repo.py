@@ -33,6 +33,31 @@ def test_selection_to_blocks_by_type(tmp_path):
     assert blocks[2].photos == []
 
 
+# ---- 정렬/사진시간 ----
+
+def test_reorder_playlists(tmp_path):
+    c = _c(tmp_path)
+    a = pr.create_playlist(c, "A")
+    b = pr.create_playlist(c, "B")
+    d = pr.create_playlist(c, "C")
+    pr.reorder_playlists(c, [d, a, b])  # C, A, B 순
+    assert [p["name"] for p in pr.list_playlists(c)] == ["C", "A", "B"]
+
+
+def test_create_playlist_orders_by_creation(tmp_path):
+    c = _c(tmp_path)
+    pr.create_playlist(c, "A")
+    pr.create_playlist(c, "B")
+    assert [p["name"] for p in pr.list_playlists(c)] == ["A", "B"]
+
+
+def test_set_photo_sec(tmp_path):
+    c = _c(tmp_path)
+    _seed_media(c)
+    mr.set_photo_sec(c, "p1", 8.0)
+    assert mr.get_media(c, "p1")["default_photo_sec"] == 8.0
+
+
 # ---- 플레이리스트 CRUD + 블록 왕복 ----
 
 def test_create_and_get_empty(tmp_path):
@@ -167,3 +192,17 @@ def test_delete_schedule(tmp_path):
                              "start_time": "12:00", "end_time": "13:00"})
     pr.delete_schedule(c, pid)
     assert pr.list_schedules(c) == []
+
+
+def test_append_selection_keeps_existing(tmp_path):
+    c = _c(tmp_path)
+    _seed_media(c)
+    pid = pr.create_playlist(c, "행사")
+    pr.update_playlist(c, pid, name="행사", repeat_mode="off", shuffle=0,
+                       blocks=[{"kind": "video", "video_id": "v1"}])
+    pr.append_selection(c, pid, ["p1", "m1"])   # 사진·음악 추가
+    blocks = pr.blocks_of(c, pid)
+    assert len(blocks) == 3
+    assert blocks[0].kind == "video"
+    assert blocks[1].kind == "slideshow" and blocks[1].photos  # 사진
+    assert blocks[2].kind == "slideshow" and blocks[2].music_id == "m1"

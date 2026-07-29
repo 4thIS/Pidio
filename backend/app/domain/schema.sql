@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS playlists (
   name        TEXT NOT NULL,
   repeat_mode TEXT DEFAULT 'off',       -- 'off'(순차1회) | 'all' | 'one'  ※ 블록 단위
   shuffle     INTEGER DEFAULT 0,        -- 블록 순서 셔플
+  sort_order  INTEGER DEFAULT 0,        -- 목록 표시 순서(드래그 재정렬)
   created_at  TEXT,
   updated_at  TEXT
 );
@@ -64,4 +65,20 @@ CREATE TABLE IF NOT EXISTS schedules (
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT
+);
+
+-- 폴더 = 사용자가 드래그로 담는 이름 있는 미디어 묶음(타입 혼합, 수동 관리)
+CREATE TABLE IF NOT EXISTS folders (
+  id         INTEGER PRIMARY KEY,
+  name       TEXT NOT NULL,
+  sort_order INTEGER DEFAULT 0,         -- 탭 표시 순서(드래그 재정렬)
+  created_at TEXT
+);
+
+-- 폴더 소속(태그식: 한 미디어가 여러 폴더에 중복 소속 가능)
+CREATE TABLE IF NOT EXISTS folder_items (
+  folder_id  INTEGER REFERENCES folders(id) ON DELETE CASCADE,
+  content_id TEXT REFERENCES media(content_id),
+  added_at   TEXT,
+  PRIMARY KEY (folder_id, content_id)
 );

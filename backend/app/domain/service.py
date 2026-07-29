@@ -10,12 +10,24 @@ import datetime as dt
 from . import playlist_repo, scheduler
 
 
+def _block_to_dict(b):
+    """도메인 Block → update_playlist 용 dict."""
+    if b.kind == "video":
+        return {"kind": "video", "video_id": b.video_id}
+    return {
+        "kind": "slideshow",
+        "music_id": b.music_id,
+        "photos": [{"photo_id": pid, "duration_sec": sec} for pid, sec in b.photos],
+    }
+
+
 class AppService:
     def __init__(self, conn, player, now_fn=None):
         self.conn = conn
         self.player = player
         self._now = now_fn or dt.datetime.now
         self._active_playlist_id = None   # 자동 재생 중인 플리(수동이면 None)
+        self.current_source_playlist_id = None  # 현재 재생 소스가 플리면 그 id(즉석선택이면 None)
         self._showing_standby = False
 
     # ---- 수동 재생 ----
@@ -25,6 +37,7 @@ class AppService:
             blocks, source_label="전체 선택", repeat=repeat, shuffle=shuffle, manual=True
         )
         self._active_playlist_id = None
+        self.current_source_playlist_id = None
         self._showing_standby = False
 
     def play_playlist(self, playlist_id, manual=True):
@@ -40,13 +53,35 @@ class AppService:
             manual=manual,
         )
         self._active_playlist_id = None if manual else playlist_id
+        self.current_source_playlist_id = playlist_id
         self._showing_standby = False
+
+    def save_queue_as_playlist(self, name):
+        """현재 재생 큐(블록들)를 새 플레이리스트로 저장. 새 id 반환."""
+        pid = playlist_repo.create_playlist(self.conn, name)
+        blocks = [_block_to_dict(b) for b in self.player.queue]
+        playlist_repo.update_playlist(
+            self.conn, pid, name,
+            self.player.repeat, bool(self.player.shuffle), blocks,
+        )
+        return pid
 
     # ---- 자동(스케줄) ----
     def evaluate_schedule(self, now=None):
+        now = now or self._now()
+        # 예약 상태 갱신(모드 무관): 지금 시각에 '예약'이 걸린 플리(기본 플리 제외)
+        scheduled_id = scheduler.active_playlist_id(
+            playlist_repo.list_schedules(self.conn), now, None
+        )
+        if scheduled_id is not None:
+            pl = playlist_repo.get_playlist(self.conn, scheduled_id)
+            self.player.schedule_active = True
+            self.player.schedule_active_name = pl["name"] if pl else None
+        else:
+            self.player.schedule_active = False
+            self.player.schedule_active_name = None
         if self.player.mode == "manual":
             return
-        now = now or self._now()
         target = scheduler.active_playlist_id(
             playlist_repo.list_schedules(self.conn), now, self._default_playlist_id()
         )
@@ -54,6 +89,7 @@ class AppService:
             if not self._showing_standby:
                 self.player.stop_to_standby()
                 self._active_playlist_id = None
+                self.current_source_playlist_id = None
                 self._showing_standby = True
             return
         if target != self._active_playlist_id:

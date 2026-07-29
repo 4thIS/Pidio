@@ -34,7 +34,7 @@ def test_tick_auto_activates_scheduled_playlist():
 
 def test_tick_manual_mode_no_change():
     deps, hub, pid = _setup()
-    # 기본 모드는 manual → 스케줄 판정 무시
+    deps.player.mode = "manual"   # 수동 재생 중 상황 → 스케줄 판정 무시
     tick(deps, hub, now=MON_1230)
     assert deps.player.get_state().source_label is None
 

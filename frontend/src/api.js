@@ -61,6 +61,9 @@ export const media = {
   list: (type = 'all') => api(`/api/media?type=${encodeURIComponent(type)}`),
   patchTitle: (id, custom_title) =>
     api(`/api/media/${id}`, { method: 'PATCH', body: { custom_title } }),
+  setPhotoSec: (id, sec) =>
+    api(`/api/media/${id}/photo_sec`, { method: 'PATCH', body: { sec } }),
+  remove: (id) => api(`/api/media/${id}`, { method: 'DELETE' }),
 }
 
 // 선택 재생 (Phase 8/Task 8.4)
@@ -77,6 +80,22 @@ export const playlists = {
   save: (id, data) => api(`/api/playlists/${id}`, { method: 'PUT', body: data }),
   remove: (id) => api(`/api/playlists/${id}`, { method: 'DELETE' }),
   play: (id) => api(`/api/playlists/${id}/play`, { method: 'POST' }),
+  add: (id, contentIds) => api(`/api/playlists/${id}/add`, { method: 'POST', body: { content_ids: contentIds } }),
+  reorder: (ids) => api('/api/playlists/reorder', { method: 'POST', body: { ids } }),
+}
+
+// 폴더 (전체목록 수동 그룹)
+export const folders = {
+  list: () => api('/api/folders'),
+  get: (id) => api(`/api/folders/${id}`),
+  create: (name) => api('/api/folders', { method: 'POST', body: { name } }),
+  remove: (id, deleteMedia = false) =>
+    api(`/api/folders/${id}?delete_media=${deleteMedia ? 'true' : 'false'}`, { method: 'DELETE' }),
+  addItems: (id, contentIds) =>
+    api(`/api/folders/${id}/items`, { method: 'POST', body: { content_ids: contentIds } }),
+  removeItem: (id, contentId) =>
+    api(`/api/folders/${id}/items/${contentId}`, { method: 'DELETE' }),
+  reorder: (ids) => api('/api/folders/reorder', { method: 'POST', body: { ids } }),
 }
 
 // 설정 (Phase 8/Task 8.5)
@@ -97,9 +116,17 @@ export const schedule = {
 
 // 재생 제어 호출 (백엔드 라우터는 Phase 8/Task 8.4 에서 구현 → 그 전엔 404)
 export const player = {
+  queue: () => api('/api/player/queue'),
+  queueBlocks: () => api('/api/player/queue/blocks'),
+  setBlocks: (blocks) => api('/api/player/queue/set_blocks', { method: 'POST', body: { blocks } }),
+  queueAdd: (contentIds) => api('/api/player/queue/add', { method: 'POST', body: { content_ids: contentIds } }),
+  queueRemove: (index) => api('/api/player/queue/remove', { method: 'POST', body: { index } }),
+  setPhotoSec: (index, sec) => api('/api/player/queue/photo_sec', { method: 'POST', body: { index, sec } }),
+  saveQueue: (name) => api('/api/player/queue/save', { method: 'POST', body: { name } }),
   /** action ∈ next|prev|pause|resume|stop|resume_auto */
   action: (name) => api(`/api/player/${name}`, { method: 'POST' }),
   jump: (index) => api('/api/player/jump', { method: 'POST', body: { index } }),
   repeat: (mode) => api('/api/player/repeat', { method: 'POST', body: { mode } }),
   shuffle: (on) => api('/api/player/shuffle', { method: 'POST', body: { on } }),
+  reorder: (from, to) => api('/api/player/queue/reorder', { method: 'POST', body: { from, to } }),
 }

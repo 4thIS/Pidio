@@ -16,6 +16,14 @@ const notice = ref('')
 const pw = ref({ old: '', new1: '', new2: '' })
 const pwError = ref('')
 
+// 테마(다크/라이트)
+const theme = ref(localStorage.getItem('pidio-theme') || 'dark')
+function setTheme(t) {
+  theme.value = t
+  localStorage.setItem('pidio-theme', t)
+  document.documentElement.dataset.theme = t
+}
+
 onMounted(async () => {
   try {
     const s = await setApi.get()
@@ -83,20 +91,32 @@ function notify(m) {
 </script>
 
 <template>
-  <div class="wrap">
-    <div class="bar">
-      <button class="back" @click="emit('close')">← 뒤로</button>
-      <span class="ttl">⚙ 설정</span>
-      <div class="grow"></div>
-      <span v-if="notice" class="notice">{{ notice }}</span>
-      <button class="save" @click="save">💾 저장</button>
-    </div>
+  <div class="set-ov" @click.self="emit('close')">
+    <div class="sheet">
+      <div class="bar">
+        <span class="ttl">⚙ 설정</span>
+        <div class="grow"></div>
+        <span v-if="notice" class="notice">{{ notice }}</span>
+        <button class="save" @click="save">저장</button>
+        <button class="x" @click="emit('close')" aria-label="닫기">✕</button>
+      </div>
 
-    <p v-if="usingMock" class="mock">샘플 값 · 서버 미연결</p>
-    <div v-if="loading" class="empty">불러오는 중…</div>
+      <p v-if="usingMock" class="mock">샘플 값 · 서버 미연결</p>
+      <div v-if="loading" class="empty">불러오는 중…</div>
 
-    <div v-else class="set">
-      <div class="srow">
+      <div v-else class="set">
+        <div class="srow">
+          <div class="l">
+            <div class="t">테마</div>
+            <div class="d">다크(핑크 포인트) · 라이트(화이트+블루)</div>
+          </div>
+          <div class="themetoggle">
+            <button :class="{ on: theme === 'dark' }" @click="setTheme('dark')">🌙 다크</button>
+            <button :class="{ on: theme === 'light' }" @click="setTheme('light')">☀ 라이트</button>
+          </div>
+        </div>
+
+        <div class="srow">
         <div class="l">
           <div class="t">기본 재생목록</div>
           <div class="d">예약이 없을 때 · 부팅 시 자동 재생</div>
@@ -141,19 +161,34 @@ function notify(m) {
           <button class="ctl acc" @click="changePassword">🔑 변경</button>
         </div>
       </div>
-      <p v-if="pwError" class="err">{{ pwError }}</p>
+        <p v-if="pwError" class="err">{{ pwError }}</p>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+.modal-enter-active, .modal-leave-active { transition: opacity 0.18s ease; }
+.modal-enter-active .sheet, .modal-leave-active .sheet { transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.modal-enter-from, .modal-leave-to { opacity: 0; }
+.modal-enter-from .sheet, .modal-leave-to .sheet { transform: translateY(14px) scale(0.97); }
+.set-ov { position: fixed; inset: 0; background: rgba(6, 9, 11, 0.66); backdrop-filter: blur(2px); display: grid; place-items: center; z-index: 25; padding: 24px; }
+.sheet { width: 720px; max-width: 100%; max-height: 88vh; overflow-y: auto; background: var(--bg); border: 1px solid var(--bd); border-radius: 16px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55); }
+.x { border: none; background: var(--elev); color: var(--muted); font-size: 13px; width: 30px; height: 30px; border-radius: 8px; }
+.themetoggle { display: flex; gap: 6px; padding: 4px; background: transparent; border: none; }
+.themetoggle button { border: 1px solid var(--bd); background: var(--elev); color: var(--muted); border-radius: 7px; padding: 6px 12px; font-size: 12px; font-weight: 600; }
+.themetoggle button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .bar {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 11px 16px;
   border-bottom: 1px solid var(--bd);
-  background: #151c21;
+  background: var(--topbar);
+  border-radius: 16px 16px 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 .back {
   font-size: 12px;

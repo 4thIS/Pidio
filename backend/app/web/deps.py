@@ -74,11 +74,19 @@ class Deps:
                 return os.path.join(self.media_root, m["rel_path"])
             return content_id
 
+        def _resolve_title(content_id: str) -> str:
+            # content_id → 표시 제목(custom_title 우선, 없으면 원본 파일명).
+            m = media_repo.get_media(self.db, content_id)
+            if m:
+                return m["custom_title"] or m["original_name"]
+            return content_id
+
         self.player = Player(
             video_mpv, music_mpv,
             standby_image=os.environ.get("PIDIO_STANDBY_IMAGE", "standby.png"),
             music_screen_image=os.environ.get("PIDIO_MUSIC_IMAGE", "music.png"),
             resolve_path=_resolve_media,
+            resolve_title=_resolve_title,
         )
         self.service = AppService(self.db, self.player)
 

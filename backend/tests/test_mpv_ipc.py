@@ -35,3 +35,16 @@ def test_mpvipc_commands_noop_when_not_connected():
     c.set_property("pause", True)
     c.command("stop")
     c.stop()   # 예외 없이 통과하면 성공
+
+
+def test_encode_with_request_id():
+    import json as _j
+    line = encode_command(["get_property", "time-pos"], request_id=7)
+    obj = _j.loads(line)
+    assert obj == {"command": ["get_property", "time-pos"], "request_id": 7}
+
+
+def test_encode_without_request_id_has_no_key():
+    import json as _j
+    obj = _j.loads(encode_command(["stop"]))
+    assert "request_id" not in obj

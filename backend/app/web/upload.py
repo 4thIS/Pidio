@@ -31,6 +31,32 @@ router = APIRouter(
 # 미디어 타입 → USB 하위 폴더 (스캐너와 동일 규약).
 _TYPE_DIR = {"video": "videos", "photo": "pictures", "music": "music"}
 
+# 허용 확장자(통상적으로 자주 쓰이는 것만) — 그 외 파일은 업로드 거부.
+_ALLOWED_EXT = {
+    "video": {".mp4", ".mkv", ".mov", ".avi", ".m4v", ".webm"},
+    "photo": {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"},
+    "music": {".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg"},
+}
+
+
+def _unique_name(conn, name: str) -> str:
+    """표시 이름이 이미 있으면 'name (1)', 'name (2)' … 로 유일하게 만든다."""
+    base, ext = os.path.splitext(name)
+
+    def taken(n: str) -> bool:
+        return conn.execute(
+            "SELECT 1 FROM media WHERE original_name=? OR custom_title=? LIMIT 1", (n, n)
+        ).fetchone() is not None
+
+    if not taken(name):
+        return name
+    i = 1
+    while True:
+        cand = f"{base} ({i}){ext}"
+        if not taken(cand):
+            return cand
+        i += 1
+
 
 class InitBody(BaseModel):
     filename: str
@@ -42,6 +68,9 @@ class InitBody(BaseModel):
 def init(body: InitBody, request: Request) -> dict:
     if body.type not in _TYPE_DIR:
         raise HTTPException(status_code=422, detail="unknown media type")
+    ext = os.path.splitext(body.filename)[1].lower()
+    if ext not in _ALLOWED_EXT[body.type]:
+        raise HTTPException(status_code=422, detail="지원하지 않는 파일 형식")
     deps = request.app.state.deps
     upload_id = uuid.uuid4().hex
     tmp_dir = Path(deps.upload_tmp) / upload_id
@@ -89,7 +118,10 @@ def complete(upload_id: str, request: Request, background: BackgroundTasks) -> d
     final = type_dir / f"{content_id}{ext}"
     shutil.move(str(merged), str(final))
     rel_path = f"{_TYPE_DIR[sess['media_type']]}/{final.name}"
-    media_repo.upsert_media(deps.db, content_id, sess["media_type"], sess["filename"], rel_path)
+    # 새 파일이면 표시 이름을 유일하게(같은 이름 다른 파일 → "이름 (1)"). 같은 내용이면 dedup 유지.
+    existing = media_repo.get_media(deps.db, content_id)
+    display_name = sess["filename"] if existing else _unique_name(deps.db, sess["filename"])
+    media_repo.upsert_media(deps.db, content_id, sess["media_type"], display_name, rel_path)
 
     background.add_task(
         _postprocess, deps, content_id, sess["media_type"], sess["filename"], rel_path, str(final)
